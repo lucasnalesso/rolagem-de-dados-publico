@@ -14,8 +14,11 @@
  custom.type='button';custom.id='customDashboardBtn';custom.className='dashboard-background-choice';custom.hidden=true;
  const preview=document.createElement('img');preview.className='dashboard-background-preview';preview.alt='';
  const label=document.createElement('span');label.textContent='Meu plano enviado';custom.append(preview,label);
+ const remove=document.createElement('button');
+ remove.type='button';remove.id='deleteDashboardBtn';remove.className='dashboard-background-choice';
+ remove.textContent='Excluir plano';remove.hidden=true;
  const note=document.createElement('small');note.textContent='Imagem salva para este navegador.';
- options.append(custom,upload,input,note);
+ options.append(custom,upload,remove,input,note);
  let saved='';
  try{saved=localStorage.getItem(imageKey)||''}catch{}
  const valid=image=>/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(image);
@@ -24,7 +27,7 @@
   document.querySelectorAll('[data-dashboard-bg]').forEach(button=>button.classList.remove('selected'));
   custom.classList.add('selected');
  }
- function showChoice(){custom.hidden=!valid(saved);if(!custom.hidden)preview.src=saved}
+ function showChoice(){custom.hidden=!valid(saved);remove.hidden=custom.hidden;remove.style.display=remove.hidden?'none':'';if(!custom.hidden)preview.src=saved;else preview.removeAttribute('src')}
  showChoice();
  if(valid(saved)&&localStorage.getItem(choiceKey)==='custom')apply(saved);
  options.addEventListener('click',event=>{
@@ -32,9 +35,18 @@
  });
  custom.addEventListener('click',()=>{if(valid(saved)){localStorage.setItem(choiceKey,'custom');apply(saved)}});
  upload.addEventListener('click',()=>input.click());
+ remove.addEventListener('click',()=>{
+  if(!valid(saved)||!confirm('Excluir o plano enviado deste navegador? A imagem original no dispositivo será mantida.'))return;
+  try{
+   const wasSelected=localStorage.getItem(choiceKey)==='custom';
+   localStorage.removeItem(imageKey);
+   if(wasSelected)document.querySelector('[data-dashboard-bg="default"]').click();
+   saved='';custom.classList.remove('selected');showChoice();toast('Plano enviado excluído.');
+  }catch{toast('Não foi possível excluir o plano. Tente novamente.')}
+ });
  input.addEventListener('change',async()=>{
   const file=input.files[0];if(!file)return;
-  upload.disabled=true;upload.textContent='Enviando plano…';let url;
+  upload.disabled=true;remove.disabled=true;upload.textContent='Enviando plano…';let url;
   try{
    if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>20*1024*1024)throw new Error('Escolha uma imagem JPG, PNG ou WebP de até 20 MB.');
    url=URL.createObjectURL(file);const image=new Image();
@@ -48,6 +60,6 @@
    catch{throw new Error('Não há espaço neste navegador para guardar o fundo. Escolha uma imagem menor.')}
    saved=result;showChoice();apply(saved);toast('Plano de fundo enviado e aplicado.');
   }catch(error){toast(error.message||'Não foi possível enviar o plano de fundo.')}
-  finally{if(url)URL.revokeObjectURL(url);input.value='';upload.disabled=false;upload.textContent='＋ Enviar plano'}
+  finally{if(url)URL.revokeObjectURL(url);input.value='';upload.disabled=false;remove.disabled=false;upload.textContent='＋ Enviar plano'}
  });
 })();
