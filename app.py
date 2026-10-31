@@ -24,6 +24,8 @@ TEMP_IMAGE_DATA = DATA_ROOT / "temporary-images"
 BOOK_DATA = DATA_ROOT / "books"
 character_store = CharacterStore(DATA_ROOT)
 MAX_SHEET_BYTES = 20 * 1024 * 1024
+MUSIC_TYPES = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg",
+               ".m4a": "audio/mp4", ".aac": "audio/aac", ".flac": "audio/flac", ".webm": "audio/webm"}
 MAX_MUSIC_BYTES = 50 * 1024 * 1024
 MAX_MUSIC_TRACKS = 40
 MAX_MUSIC_TOTAL_BYTES = 500 * 1024 * 1024
@@ -155,12 +157,13 @@ class Handler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
 
-        if parsed.path == "/api/characters":
+        if parsed.path in ("/api/characters", "/api/npcs"):
             room = query.get("room", [""])[0]
             if not valid_room(room):
                 return self.send_json({"error": "sala inválida"}, 400)
             try:
-                return self.send_json({"sheets": character_store.list(room),
+                sheets = character_store.list_npcs(room) if parsed.path == "/api/npcs" else character_store.list(room)
+                return self.send_json({"sheets": sheets,
                                        "storage": "cloud" if character_store.cloud else "server"})
             except CharacterError as error:
                 return self.send_json({"error": str(error)}, error.status)
@@ -269,7 +272,7 @@ class Handler(SimpleHTTPRequestHandler):
             except (ValueError, OSError):
                 return self.send_json({"error": "trilha não encontrada"}, 404)
             self.send_response(200)
-            self.send_header("Content-Type", "audio/mpeg")
+            self.send_header("Content-Type", MUSIC_TYPES.get(Path(record.get("stored", "")).suffix.lower(), "audio/mpeg"))
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Content-Disposition", "inline")
             self.send_header("X-Content-Type-Options", "nosniff")
@@ -370,8 +373,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/api/characters":
-            return self.save_character()
+        if parsed.path in ("/api/characters", "/api/npcs"):
+            return self.save_character(npc=parsed.path == "/api/npcs")
         if parsed.path == "/api/books":
             return self.upload_book(parse_qs(parsed.query))
         if parsed.path == "/api/sheets":
@@ -472,7 +475,7 @@ class Handler(SimpleHTTPRequestHandler):
         response["id"] = item["id"]
         return self.send_json(response)
 
-    def save_character(self):
+    def save_character(self, npc=False):
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 < length <= 512 * 1024:
@@ -484,18 +487,27 @@ class Handler(SimpleHTTPRequestHandler):
             fields, token = payload.get("fields"), payload.get("editToken")
             version, owner_id = payload.get("version"), payload.get("playerId")
             if (not isinstance(room, str) or not valid_room(room)
-                    or type(slot) is not int or not 1 <= slot <= 5
+                    or (not isinstance(slot, str) or not re.fullmatch(r"[a-f0-9]{32}", slot) if npc
+                        else type(slot) is not int or not 1 <= slot <= 5)
                     or not isinstance(token, str) or not re.fullmatch(r"[a-f0-9]{64}", token)
                     or type(version) is not int or version < 0
                     or not isinstance(owner_id, str) or not PLAYER_ID_RE.fullmatch(owner_id)
                     or not isinstance(fields, dict) or len(fields) > 1000
                     or any(not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", key)
-                           or not isinstance(value, str) or len(value) > 12000 for key, value in fields.items())):
+                           or not isinstance(value, str) or len(value) > (300000 if key == "portrait.image" else 12000) for key, value in fields.items())):
                 raise ValueError()
+            portrait = fields.get("portrait.image", "")
+            if portrait:
+                if not re.fullmatch(r"data:image/jpeg;base64,[A-Za-z0-9+/=]+", portrait):
+                    raise ValueError()
+                image_data = base64.b64decode(portrait.split(",", 1)[1], validate=True)
+                if len(image_data) > 200 * 1024 or not image_data.startswith(b"\xff\xd8\xff"):
+                    raise ValueError()
             player_name = payload.get("playerName", "Aventureiro")
             if not isinstance(player_name, str):
                 raise ValueError()
-            record = character_store.save(room, slot, token, fields, version, owner_id, clean_sheet_name(player_name))
+            save = character_store.save_npc if npc else character_store.save
+            record = save(room, slot, token, fields, version, owner_id, clean_sheet_name(player_name))
             return self.send_json({"sheet": record, "storage": "cloud" if character_store.cloud else "server"})
         except (ValueError, TypeError, json.JSONDecodeError):
             return self.send_json({"error": "Dados de ficha inválidos."}, 400)
@@ -645,18 +657,28 @@ class Handler(SimpleHTTPRequestHandler):
         if not valid_room(room) or not re.fullmatch(r"[a-fA-F0-9-]{8,64}", player_id):
             return self.send_json({"error": "sala ou jogador inválido"}, 400)
         if length <= 0 or length > MAX_MUSIC_BYTES:
-            return self.send_json({"error": "O MP3 deve ter até 50 MB."}, 413)
+            return self.send_json({"error": "Cada música deve ter até 50 MB."}, 413)
         filename = query.get("filename", [""])[0].replace("\\", "/").split("/")[-1]
-        if Path(filename).suffix.lower() != ".mp3":
-            return self.send_json({"error": "Envie um arquivo MP3."}, 415)
+        extension = Path(filename).suffix.lower()
+        if extension not in MUSIC_TYPES:
+            return self.send_json({"error": "Envie MP3, WAV, OGG, M4A, AAC, FLAC ou WebM."}, 415)
         data = self.rfile.read(length)
         if len(data) != length:
             return self.send_json({"error": "upload incompleto"}, 400)
         valid_mp3 = data.startswith(b"ID3") or (len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0)
-        if not valid_mp3:
-            return self.send_json({"error": "O arquivo não parece ser um MP3 válido."}, 415)
+        valid_audio = {
+            ".mp3": valid_mp3,
+            ".aac": data.startswith(b"ID3") or (len(data) > 1 and data[0] == 255 and data[1] & 0xF6 == 0xF0),
+            ".wav": data[:4] == b"RIFF" and data[8:12] == b"WAVE",
+            ".ogg": data.startswith(b"OggS"),
+            ".m4a": data[4:8] == b"ftyp",
+            ".flac": data.startswith(b"fLaC"),
+            ".webm": data.startswith(b"\x1a\x45\xdf\xa3"),
+        }.get(extension, False)
+        if not valid_audio:
+            return self.send_json({"error": "O conteúdo não corresponde ao formato da música."}, 415)
         file_id = uuid.uuid4().hex
-        stored_name = f"{file_id}.mp3"
+        stored_name = f"{file_id}{extension}"
         room_dir = MUSIC_DATA / room
         room_dir.mkdir(parents=True, exist_ok=True)
         record = {"id": file_id, "filename": filename[:180] or "trilha.mp3", "bytes": length,

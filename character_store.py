@@ -65,6 +65,30 @@ class CharacterStore:
             return [self.public(record) for record in self._load(room)]
 
     @staticmethod
+    def npc_prefix(room):
+        # Separate namespace; each NPC uses slot 1 without changing existing player rows.
+        return 'npc-' + hashlib.sha256(room.encode()).hexdigest() + '-'
+
+    def list_npcs(self, room):
+        prefix = self.npc_prefix(room)
+        with self.mutex:
+            if self.cloud:
+                rows = self.request('GET', {'room': 'like.' + prefix + '*',
+                                           'select': 'room,document'})
+                return [{**row['document'], 'slot': row['room'][len(prefix):]}
+                        for row in rows]
+            records = []
+            for folder in sorted(self.root.glob(prefix + '*')):
+                records.extend({**self.public(record), 'slot': folder.name[len(prefix):]}
+                               for record in self._load(folder.name))
+            return records
+
+    def save_npc(self, room, npc_id, token, fields, version, owner_id, owner_name):
+        document = self.save(self.npc_prefix(room) + npc_id, 1, token, fields,
+                             version, owner_id, owner_name)
+        return {**document, 'slot': npc_id}
+
+    @staticmethod
     def public(record):
         return {key: value for key, value in record.items() if not key.startswith('_')}
 

@@ -27,3 +27,12 @@ Para recuperação em qualquer aparelho após reinícios:
 A chave de serviço fica apenas no servidor Python; não deve aparecer no HTML, JavaScript, GitHub ou chat. Este banco armazena somente fichas editáveis, não os uploads anteriores, livros ou MP3s.
 
 Projetos Supabase Free podem pausar por inatividade; reative o projeto pelo painel se necessário. Guarde também cópias JSON. A nuvem não substitui backups.
+
+
+## NPCs e imagens
+
+A biblioteca de NPCs começa com uma ficha e permite criar outras pelo botão **Criar novo NPC**. Cada NPC tem documento, chave e versão próprios. O servidor utiliza um namespace separado no mesmo banco Supabase, sem alterar as cinco fichas dos jogadores e sem exigir migração de tabela.
+
+As imagens dos personagens são convertidas para JPEG de até 800 pixels e salvas dentro do documento da ficha. Assim, também são recuperadas em outro aparelho e após reinícios do servidor. Envio e exclusão respeitam a chave de edição da ficha. A miniatura abre uma janela de visualização local.
+
+**Abrir pasta** envia músicas da pasta e das subpastas em MP3, WAV, OGG, M4A, AAC, FLAC e WebM. Arquivos de outros tipos são ignorados. São mantidos os limites de 40 músicas, 50 MB por arquivo e 500 MB por sala; a reprodução de cada formato depende do navegador utilizado. Em aparelhos sem seletor de pastas, o botão permite selecionar vários arquivos.
