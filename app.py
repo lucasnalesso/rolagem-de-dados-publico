@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import uuid
+from character_store import CharacterError, CharacterStore
 
 ROOT = Path(__file__).resolve().parent
 DATA_ROOT = Path(os.environ.get("MESA_DATA_DIR", str(ROOT / ".mesa-data"))).resolve()
@@ -21,6 +22,7 @@ SHEET_DATA = DATA_ROOT / "sheets"
 MUSIC_DATA = DATA_ROOT / "music"
 TEMP_IMAGE_DATA = DATA_ROOT / "temporary-images"
 BOOK_DATA = DATA_ROOT / "books"
+character_store = CharacterStore(DATA_ROOT)
 MAX_SHEET_BYTES = 20 * 1024 * 1024
 MAX_MUSIC_BYTES = 50 * 1024 * 1024
 MAX_MUSIC_TRACKS = 40
@@ -152,6 +154,16 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
+
+        if parsed.path == "/api/characters":
+            room = query.get("room", [""])[0]
+            if not valid_room(room):
+                return self.send_json({"error": "sala inválida"}, 400)
+            try:
+                return self.send_json({"sheets": character_store.list(room),
+                                       "storage": "cloud" if character_store.cloud else "server"})
+            except CharacterError as error:
+                return self.send_json({"error": str(error)}, error.status)
 
         if parsed.path == "/healthz":
             return self.send_json({"status": "ok"})
@@ -358,6 +370,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/characters":
+            return self.save_character()
         if parsed.path == "/api/books":
             return self.upload_book(parse_qs(parsed.query))
         if parsed.path == "/api/sheets":
@@ -457,6 +471,36 @@ class Handler(SimpleHTTPRequestHandler):
                 del events[:-300]
         response["id"] = item["id"]
         return self.send_json(response)
+
+    def save_character(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 0 < length <= 512 * 1024:
+                return self.send_json({"error": "Ficha muito grande ou vazia."}, 413)
+            payload = json.loads(self.rfile.read(length))
+            if not isinstance(payload, dict):
+                raise ValueError()
+            room, slot = payload.get("room"), payload.get("slot")
+            fields, token = payload.get("fields"), payload.get("editToken")
+            version, owner_id = payload.get("version"), payload.get("playerId")
+            if (not isinstance(room, str) or not valid_room(room)
+                    or type(slot) is not int or not 1 <= slot <= 5
+                    or not isinstance(token, str) or not re.fullmatch(r"[a-f0-9]{64}", token)
+                    or type(version) is not int or version < 0
+                    or not isinstance(owner_id, str) or not PLAYER_ID_RE.fullmatch(owner_id)
+                    or not isinstance(fields, dict) or len(fields) > 1000
+                    or any(not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", key)
+                           or not isinstance(value, str) or len(value) > 12000 for key, value in fields.items())):
+                raise ValueError()
+            player_name = payload.get("playerName", "Aventureiro")
+            if not isinstance(player_name, str):
+                raise ValueError()
+            record = character_store.save(room, slot, token, fields, version, owner_id, clean_sheet_name(player_name))
+            return self.send_json({"sheet": record, "storage": "cloud" if character_store.cloud else "server"})
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return self.send_json({"error": "Dados de ficha inválidos."}, 400)
+        except CharacterError as error:
+            return self.send_json({"error": str(error)}, error.status)
 
     def upload_book(self, query):
         room = query.get("room", [""])[0]

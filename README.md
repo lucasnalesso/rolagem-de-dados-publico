@@ -1,5 +1,9 @@
 # Mesa Sombria — servidor público
 
+## Fichas editáveis
+
+A tela Ver Personagens foi convertida em quatro páginas editáveis de AD&D 2e para cinco jogadores. Consulte [FICHAS-NUVEM.md](FICHAS-NUVEM.md) para ativar persistência em Supabase e recuperar as fichas em outros aparelhos. Sem configurar esse banco, a ficha tem cópia neste navegador e armazenamento temporário no servidor gratuito.
+
 Cópia independente do aplicativo local, preparada para hospedagem Docker e Render. Não requer PC ligado, Cloudflare Tunnel ou inicializadores do Windows após o deploy.
 
 ## Publicar
