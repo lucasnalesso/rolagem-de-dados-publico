@@ -89,6 +89,7 @@ function mountCharacterEditor(npc) {
   renderPortrait();
   el('createNpcBtn').hidden=!npc;
   el('createNpcBtn').disabled=!active;
+  el('deleteNpcBtn').hidden=!npc;el('deleteNpcBtn').disabled=!editable();
   el('characterTabs').innerHTML = titles.map((label,i)=>`<button type="button" data-character-page="${i+1}" class="${page===i+1?'active':''}" aria-pressed="${page===i+1}">${i+1} · ${label}</button>`).join('');
   el('editableCharacterTitle').textContent = `${slotLabel(selected)} · ${draft(selected).fields['identity.name']||'Ficha de personagem'}`;
   const form=el('characterFields');
@@ -115,9 +116,10 @@ function mountCharacterEditor(npc) {
  }
  async function refresh(initial=false) {
   if(refreshing)return;
-  refreshing=true;
+  refreshing=true;let deletedSelection=false;
   try {
    const data=await api(`${endpoint}?room=${encodeURIComponent(room)}`);
+   if(npc){for(const id of data.deleted||[]){records.delete(id);drafts.delete(id);localStorage.removeItem(cacheKey(id));if(selected===id){selected=crypto.randomUUID().replaceAll('-','');deletedSelection=true}}}
    storage=data.storage;records.clear();
    for(const record of data.sheets||[]) {
     records.set(record.slot,record);const local=draft(record.slot);
@@ -128,7 +130,7 @@ function mountCharacterEditor(npc) {
     const local=draft(slot);
     if(!records.has(slot)&&local.editToken&&Object.keys(local.fields).length){local.version=0;local.dirty=true;persist(slot)}
    }
-   if(initial||(!editable()&&!screen.contains(document.activeElement)))renderPage();else renderPlayersList();
+   if(initial||deletedSelection||(!editable()&&!screen.contains(document.activeElement)))renderPage();else renderPlayersList();
    if(initial&&active&&draft(selected).dirty&&editable())scheduleSave(selected);
   } catch(error){if(initial)renderPage();status(error.message+' A cópia deste navegador foi mantida.',true)}
   finally{refreshing=false}
@@ -150,7 +152,7 @@ function mountCharacterEditor(npc) {
     if(slot===selected)el('editKeyBtn').hidden=false;
     if(slot===selected)status(local.dirty?'Salvando novas alterações…':storage==='cloud'?'Salvo na nuvem e neste aparelho.':'Salvo neste aparelho e na sala.');
     renderPlayersList();
-   }catch(error){local.dirty=true;local.blocked=error.status===409||error.status===403;persist(slot);if(slot===selected)status(error.message,true)}
+   }catch(error){if(npc&&error.status===410){local.dirty=false;local.blocked=true;drafts.delete(slot);records.delete(slot);localStorage.removeItem(cacheKey(slot));if(slot===selected){selected=crypto.randomUUID().replaceAll('-','');refresh(true)}return}local.dirty=true;local.blocked=error.status===409||error.status===403;persist(slot);if(slot===selected)status(error.message,true)}
    finally{queues.delete(slot);if(local.dirty&&!local.blocked&&JSON.stringify(local.fields)!==snapshot)scheduleSave(slot)}
   })();queues.set(slot,operation);return operation;
  }
@@ -215,7 +217,7 @@ function mountCharacterEditor(npc) {
   }catch(error){status(error.message,true)}
  }
  if(npc){for(const key of Object.keys(localStorage)){const prefix=`mesa:npc-editor:v1:${room}:`;if(key.startsWith(prefix)&&/^[a-f0-9]{32}$/.test(key.slice(prefix.length)))draft(key.slice(prefix.length))}}
- screen.innerHTML=scoped(`<div class="characters-shell character-editor-shell"><div class="characters-header"><div><span class="eyebrow">FICHAS DA PARTY · AD&D 2ª EDIÇÃO</span><h2 id="charactersHeading">${npc?'Ver NPC':'Ver personagens'}</h2></div><button type="button" class="characters-back" id="editorCloseBtn">← VOLTAR À MESA</button></div><div class="characters-layout character-editor-layout"><aside class="characters-list" id="characterSlots" aria-label="${npc?'Fichas dos NPCs':'Fichas dos cinco jogadores'}"></aside><section class="character-document"><div class="character-editor-heading"><h3 id="editableCharacterTitle"></h3><div class="character-editor-actions"><button type="button" id="saveCharacterBtn">Salvar agora</button><button type="button" id="exportCharacterBtn">Baixar cópia</button><button type="button" id="importCharacterBtn">Importar cópia</button><button type="button" id="editKeyBtn">Chave de edição</button><button type="button" id="recoverCharacterBtn" hidden>Recuperar acesso</button><input id="characterBackupInput" type="file" accept="application/json,.json" hidden></div></div><div class="character-portrait-panel" id="portraitPanel"><button type="button" id="portraitPreview" class="character-portrait-preview" aria-label="Ampliar imagem do personagem" hidden><img id="portraitImage" alt="Imagem do personagem"></button><div class="character-portrait-actions"><button type="button" id="uploadPortraitBtn">Enviar imagem do personagem</button><button type="button" id="deletePortraitBtn" hidden>Excluir imagem</button><input type="file" id="portraitInput" accept="image/jpeg,image/png,image/webp" hidden><small>JPG, PNG ou WebP · a imagem fica salva junto à ficha.</small></div></div><p class="character-storage-notice" id="characterStorageNotice"></p><p class="character-save-status" id="characterSaveStatus" role="status" aria-live="polite"></p><nav class="character-tabs" id="characterTabs" aria-label="Páginas da ficha"></nav><form id="characterEditorForm"><fieldset id="characterFields"></fieldset></form></section></div></div>`);
+ screen.innerHTML=scoped(`<div class="characters-shell character-editor-shell"><div class="characters-header"><div><span class="eyebrow">FICHAS DA PARTY · AD&D 2ª EDIÇÃO</span><h2 id="charactersHeading">${npc?'Ver NPC':'Ver personagens'}</h2></div><button type="button" class="characters-back" id="editorCloseBtn">← VOLTAR À MESA</button></div><div class="characters-layout character-editor-layout"><aside class="characters-list" id="characterSlots" aria-label="${npc?'Fichas dos NPCs':'Fichas dos cinco jogadores'}"></aside><section class="character-document"><div class="character-editor-heading"><h3 id="editableCharacterTitle"></h3><div class="character-editor-actions"><button type="button" id="deleteNpcBtn" hidden>Excluir NPC</button><button type="button" id="saveCharacterBtn">Salvar agora</button><button type="button" id="exportCharacterBtn">Baixar cópia</button><button type="button" id="importCharacterBtn">Importar cópia</button><button type="button" id="editKeyBtn">Chave de edição</button><button type="button" id="recoverCharacterBtn" hidden>Recuperar acesso</button><input id="characterBackupInput" type="file" accept="application/json,.json" hidden></div></div><div class="character-portrait-panel" id="portraitPanel"><button type="button" id="portraitPreview" class="character-portrait-preview" aria-label="Ampliar imagem do personagem" hidden><img id="portraitImage" alt="Imagem do personagem"></button><div class="character-portrait-actions"><button type="button" id="uploadPortraitBtn">Enviar imagem do personagem</button><button type="button" id="deletePortraitBtn" hidden>Excluir imagem</button><input type="file" id="portraitInput" accept="image/jpeg,image/png,image/webp" hidden><small>JPG, PNG ou WebP · a imagem fica salva junto à ficha.</small></div></div><p class="character-storage-notice" id="characterStorageNotice"></p><p class="character-save-status" id="characterSaveStatus" role="status" aria-live="polite"></p><nav class="character-tabs" id="characterTabs" aria-label="Páginas da ficha"></nav><form id="characterEditorForm"><fieldset id="characterFields"></fieldset></form></section></div></div>`);
  const createNpc=document.createElement('button');createNpc.type='button';createNpc.id=npc?'npc-createNpcBtn':'createNpcBtn';createNpc.className='create-npc-button';createNpc.textContent='＋ Criar novo NPC';createNpc.hidden=!npc;el('characterSlots').after(createNpc);
  if(npc){const aside=document.createElement('div');aside.className='npc-sidebar';el('characterSlots').before(aside);aside.append(el('characterSlots'),createNpc)}
  const joinPanel=document.createElement('section');
@@ -252,6 +254,20 @@ function mountCharacterEditor(npc) {
  });
  el('characterSlots').addEventListener('click',event=>{const button=event.target.closest('[data-character-slot]');if(!button)return;if(draft(selected).dirty)save(selected);selected=npc?button.dataset.characterSlot:Number(button.dataset.characterSlot);page=1;renderPage();if(draft(selected).dirty&&editable())scheduleSave(selected)});
  el('characterTabs').addEventListener('click',event=>{const button=event.target.closest('[data-character-page]');if(!button)return;page=Number(button.dataset.characterPage);renderPage()});
+ el('deleteNpcBtn').addEventListener('click',async()=>{
+  if(!npc||!editable())return;
+  const slot=selected,label=draft(slot).fields['identity.name']||slotLabel(slot);
+  if(!confirm(`Excluir o NPC “${label}” e sua imagem?`))return;
+  const button=el('deleteNpcBtn');button.disabled=true;clearTimeout(timer);
+  try{
+   if(queues.has(slot))await queues.get(slot);
+   const local=draft(slot);
+   if(records.has(slot))await api(endpoint,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({room,slot,editToken:local.editToken,version:local.version})});
+   records.delete(slot);drafts.delete(slot);localStorage.removeItem(cacheKey(slot));
+   selected=slots().find(id=>id!==slot)||crypto.randomUUID().replaceAll('-','');page=1;
+   renderPage();status('NPC excluído.');
+  }catch(error){status(error.message,true)}finally{button.disabled=!editable()}
+ });
  el('createNpcBtn').addEventListener('click',async()=>{
   if(!npc||!active)return;if(draft(selected).dirty)await save(selected);
   selected=crypto.randomUUID().replaceAll('-','');page=1;

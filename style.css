@@ -71,3 +71,5 @@
 @media(max-width:700px){.chat-widget{bottom:var(--party-player-top,200px)}.chat-body{min-height:0;height:min(360px,calc(100dvh - var(--party-player-top,200px) - 110px));max-height:calc(100vh - var(--party-player-top,200px) - 110px)}.music-player-actions{flex-wrap:wrap;justify-content:flex-end}.header-settings{max-height:calc(100vh - 80px);overflow-y:auto}.music-volume-options input[type=range]{min-height:32px}}
 
 .music-player-actions .music-upload{display:inline-flex;align-items:center;justify-content:center;gap:4px;background:#100e0c;font-family:inherit;font-weight:inherit;line-height:1.2;min-height:25px}.music-player-actions .music-upload:hover{background:#211b13}
+
+#dashboardBackgroundOptions>small{display:block;color:#ac9d87;font-size:10px;line-height:1.4;margin:8px 0}#customDashboardBtn[hidden]{display:none}#uploadDashboardBtn{min-height:42px;justify-content:center;background:#100e0c;color:#ead4ac;border:1px solid #b793604f}#uploadDashboardBtn:disabled{opacity:.6;cursor:progress}

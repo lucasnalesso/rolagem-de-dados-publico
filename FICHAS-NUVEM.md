@@ -36,3 +36,10 @@ A biblioteca de NPCs começa com uma ficha e permite criar outras pelo botão **
 As imagens dos personagens são convertidas para JPEG de até 800 pixels e salvas dentro do documento da ficha. Assim, também são recuperadas em outro aparelho e após reinícios do servidor. Envio e exclusão respeitam a chave de edição da ficha. A miniatura abre uma janela de visualização local.
 
 **Abrir pasta** envia músicas da pasta e das subpastas em MP3, WAV, OGG, M4A, AAC, FLAC e WebM. Arquivos de outros tipos são ignorados. São mantidos os limites de 40 músicas, 50 MB por arquivo e 500 MB por sala; a reprodução de cada formato depende do navegador utilizado. Em aparelhos sem seletor de pastas, o botão permite selecionar vários arquivos.
+
+
+## Exclusão de NPC e fundo enviado
+
+**Excluir NPC** remove a ficha selecionada e sua imagem mediante confirmação e validação da chave de edição. Um registro mínimo de exclusão, sem os campos da ficha nem imagem, impede que cópias desatualizadas recriem o NPC automaticamente. Outras fichas permanecem independentes.
+
+Em **Opções da mesa → Planos de fundos → Enviar plano**, é possível escolher JPG, PNG ou WebP do dispositivo. A imagem é otimizada e guardada como preferência deste navegador. **Meu plano enviado** reaplica a imagem, e os fundos originais continuam disponíveis.

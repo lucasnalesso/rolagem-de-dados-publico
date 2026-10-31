@@ -88,23 +88,38 @@ class CharacterStore:
                              version, owner_id, owner_name)
         return {**document, 'slot': npc_id}
 
+    def delete_npc(self, room, npc_id, token, version):
+        namespace = self.npc_prefix(room) + npc_id
+        with self.mutex:
+            records = self._load(namespace)
+            previous = next((record for record in records if record['slot'] == 1), None)
+            if not previous:
+                raise CharacterError('NPC não encontrado.', 404)
+            # Retain a small tombstone to reject stale edits from other devices.
+            self.save(namespace, 1, token, {}, version, previous['ownerId'],
+                      previous['ownerName'], deleted=True)
+
     @staticmethod
     def public(record):
         return {key: value for key, value in record.items() if not key.startswith('_')}
 
-    def save(self, room, slot, token, fields, version, owner_id, owner_name):
+    def save(self, room, slot, token, fields, version, owner_id, owner_name, deleted=False):
         token_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
         with self.mutex:
             records = self._load(room)
             previous = next((record for record in records if record['slot'] == slot), None)
             if previous and not secrets.compare_digest(previous.get('_tokenHash', ''), token_hash):
                 raise CharacterError('Esta ficha pertence a outro jogador. Use sua chave de edição para recuperá-la.', 403)
+            if previous and previous.get('deleted'):
+                raise CharacterError('Este NPC foi excluído. Crie um novo NPC para continuar.', 410)
             if (previous and previous['version'] != version) or (not previous and version != 0):
                 raise CharacterError('A ficha mudou no servidor. Sua edição está guardada neste aparelho; reabra a ficha para conferir.', 409)
             document = {'slot': slot, 'fields': fields, 'version': version + 1,
                         'ownerId': previous['ownerId'] if previous else owner_id,
                         'ownerName': owner_name,
                         'updatedAt': datetime.now(timezone.utc).isoformat()}
+            if deleted:
+                document['deleted'] = True
             if self.cloud:
                 row = {'room': room, 'slot': slot, 'version': document['version'],
                        'token_hash': token_hash, 'document': document}

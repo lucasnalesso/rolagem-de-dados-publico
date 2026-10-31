@@ -163,7 +163,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"error": "sala inválida"}, 400)
             try:
                 sheets = character_store.list_npcs(room) if parsed.path == "/api/npcs" else character_store.list(room)
-                return self.send_json({"sheets": sheets,
+                return self.send_json({"sheets": [sheet for sheet in sheets if not sheet.get("deleted")],
+                                       "deleted": [sheet["slot"] for sheet in sheets if sheet.get("deleted")],
                                        "storage": "cloud" if character_store.cloud else "server"})
             except CharacterError as error:
                 return self.send_json({"error": str(error)}, error.status)
@@ -340,6 +341,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_DELETE(self):
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
+        if parsed.path == "/api/npcs":
+            return self.delete_npc()
         if parsed.path == "/api/books":
             return self.delete_book(query)
         if parsed.path == "/api/music":
@@ -474,6 +477,28 @@ class Handler(SimpleHTTPRequestHandler):
                 del events[:-300]
         response["id"] = item["id"]
         return self.send_json(response)
+
+    def delete_npc(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 0 < length <= 4096:
+                return self.send_json({"error": "Pedido de exclusão inválido."}, 400)
+            payload = json.loads(self.rfile.read(length))
+            if not isinstance(payload, dict):
+                raise ValueError()
+            room, npc_id = payload.get("room"), payload.get("slot")
+            token, version = payload.get("editToken"), payload.get("version")
+            if (not isinstance(room, str) or not valid_room(room)
+                    or not isinstance(npc_id, str) or not re.fullmatch(r"[a-f0-9]{32}", npc_id)
+                    or not isinstance(token, str) or not re.fullmatch(r"[a-f0-9]{64}", token)
+                    or type(version) is not int or version < 1):
+                raise ValueError()
+            character_store.delete_npc(room, npc_id, token, version)
+            return self.send_json({"ok": True, "deleted": npc_id})
+        except (ValueError, TypeError):
+            return self.send_json({"error": "Pedido de exclusão inválido."}, 400)
+        except CharacterError as error:
+            return self.send_json({"error": str(error)}, error.status)
 
     def save_character(self, npc=False):
         try:
