@@ -88,12 +88,13 @@
   form.disabled=!editable();
   document.getElementById('saveCharacterBtn').disabled=!editable();
   document.getElementById('importCharacterBtn').disabled=!editable();
+  document.getElementById('characterJoinPanel').hidden=active;
   document.getElementById('recoverCharacterBtn').hidden=!records.has(selected)||editable();
   document.getElementById('editKeyBtn').hidden=!draft(selected).editToken;
   document.getElementById('characterStorageNotice').textContent=storage==='cloud'
    ? 'Salvamento em nuvem ativo. A chave de edição permite recuperar sua ficha em outro aparelho.'
    : 'Cópia automática neste navegador e sincronização com a sala. No Render gratuito, a cópia do servidor pode ser perdida após reinícios. Baixe uma cópia para guardar ou transferir para outro aparelho.';
-  status(!active?'Entre na mesa para editar a ficha.':!editable()?'Somente leitura · esta ficha pertence a outro jogador.':draft(selected).dirty?'Alterações guardadas neste aparelho; aguardando salvar na sala.':records.has(selected)?'Ficha salva.':'Preencha a ficha. As alterações serão salvas automaticamente.');
+  status(!active?'Preencha seu nome acima e clique em “Entrar e editar ficha” para liberar os campos.':!editable()?'Somente leitura · esta ficha pertence a outro jogador. Use “Recuperar acesso” se ela for sua.':draft(selected).dirty?'Alterações guardadas neste aparelho; aguardando salvar na sala.':'Edição liberada · clique nos campos para preencher. As alterações são salvas automaticamente.');
  }
  async function api(url,options) {
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
@@ -146,6 +147,8 @@
  }
  function openEditor(){
   screen.hidden=false;selected=Array.from({length:5},(_,i)=>i+1).find(slot=>draft(slot).editToken)||1;
+  const joinName=document.getElementById('characterJoinName');
+  if(!joinName.value)joinName.value=document.getElementById('nameInput').value.trim()||(active?name:'');
   renderPage();refresh(true);
  }
  function downloadBackup(){
@@ -168,6 +171,27 @@
   }catch(error){status(error.message,true)}
  }
  screen.innerHTML=`<div class="characters-shell character-editor-shell"><div class="characters-header"><div><span class="eyebrow">FICHAS DA PARTY · AD&D 2ª EDIÇÃO</span><h2 id="charactersHeading">Ver personagens</h2></div><button type="button" class="characters-back" id="editorCloseBtn">← VOLTAR À MESA</button></div><div class="characters-layout character-editor-layout"><aside class="characters-list" id="characterSlots" aria-label="Fichas dos cinco jogadores"></aside><section class="character-document"><div class="character-editor-heading"><h3 id="editableCharacterTitle"></h3><div class="character-editor-actions"><button type="button" id="saveCharacterBtn">Salvar agora</button><button type="button" id="exportCharacterBtn">Baixar cópia</button><button type="button" id="importCharacterBtn">Importar cópia</button><button type="button" id="editKeyBtn">Chave de edição</button><button type="button" id="recoverCharacterBtn" hidden>Recuperar acesso</button><input id="characterBackupInput" type="file" accept="application/json,.json" hidden></div></div><p class="character-storage-notice" id="characterStorageNotice"></p><p class="character-save-status" id="characterSaveStatus" role="status" aria-live="polite"></p><nav class="character-tabs" id="characterTabs" aria-label="Páginas da ficha"></nav><form id="characterEditorForm"><fieldset id="characterFields"></fieldset></form></section></div></div>`;
+ const joinPanel=document.createElement('section');
+ joinPanel.id='characterJoinPanel';joinPanel.className='character-join-panel';
+ joinPanel.innerHTML='<div><strong>Entre na mesa para editar sua ficha</strong><p>Informe seu nome para liberar os campos e salvar seu personagem nesta sala.</p></div><form id="characterJoinForm"><label for="characterJoinName">Seu nome de jogador</label><div><input id="characterJoinName" type="text" maxlength="18" autocomplete="nickname" placeholder="Digite seu nome" required><button id="characterJoinBtn" type="submit">Entrar e editar ficha</button></div></form>';
+ document.getElementById('characterStorageNotice').before(joinPanel);
+ document.getElementById('characterJoinForm').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const input=document.getElementById('characterJoinName'),button=document.getElementById('characterJoinBtn');
+  const enteredName=input.value.trim();
+  if(!enteredName){input.focus();return}
+  if(active){renderPage();return}
+  button.disabled=true;button.textContent='Entrando na mesa…';
+  try{
+   const mainInput=document.getElementById('nameInput'),mainButton=document.getElementById('joinBtn');
+   mainInput.value=enteredName;
+   await mainButton.onclick.call(mainButton);
+   renderPage();
+   if(active){await refresh(true);const firstField=document.querySelector('#characterFields:not(:disabled) input');firstField?.focus()}
+   else status('Não foi possível entrar na sala. Confira a conexão e tente novamente.',true);
+  }catch{status('Não foi possível entrar na sala. Tente novamente.',true)}
+  finally{button.disabled=false;button.textContent='Entrar e editar ficha'}
+ });
  document.getElementById('viewCharactersBtn').addEventListener('click',openEditor);
  document.getElementById('editorCloseBtn').addEventListener('click',()=>{if(draft(selected).dirty)save();screen.hidden=true;document.getElementById('viewCharactersBtn').focus()});
  document.getElementById('characterEditorForm').addEventListener('submit',event=>{event.preventDefault();save()});
