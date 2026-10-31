@@ -1,0 +1,8 @@
+.mesa-data/
+.env
+.env.*
+__pycache__/
+*.pyc
+*.log
+*.exe
+*.zip
