@@ -104,3 +104,10 @@ O teste de silenciar o microfone do outro aparelho confirmou que o retorno vem p
 O ajuste de volume enviado permanece disponível de 0% a 400%. As referências recebidas não são misturadas ao microfone e não criam outra saída de som. A trilha não é analisada nem regulada por essa proteção. Ao mutar a reprodução da chamada, o antirretorno libera o microfone, respeitando o mute manual dele. As análises e temporizadores são removidos ao encerrar a transmissão.
 
 Validação: sinais sintéticos para silêncio, retomada, volumes 25%/200%, mute e limpeza; dois pares WebRTC com retorno artificial atrasado de 120 ms; integração de dois participantes com captura sintética e saída única por participante. Esses testes não usam os microfones reais do usuário e não substituem a confirmação em PC/celular. Ambos precisam recarregar e reiniciar a chamada.
+
+
+### Verificar áudio nos navegadores usados na chamada
+
+Em **Opções da mesa → Som da câmera → Verificar áudio da chamada**, o diagnóstico mostra os valores efetivos informados pela faixa capturada: cancelamento de eco, redução de ruído e ganho automático. Quando o navegador não informa uma propriedade, ela é mostrada como desconhecida, sem afirmar que o recurso foi ativado. A captura tenta exigir cancelamento de eco, com uma alternativa para navegadores que não aceitam a restrição obrigatória.
+
+A sala compartilha somente estados de áudio e volumes entre os participantes ativos, usando a sinalização existente. Não grava áudio nem envia identificadores de dispositivo ou o nome do microfone; esse nome aparece apenas no diagnóstico local. O resumo dos outros participantes é atualizado a cada dez segundos enquanto a câmera está ativa. O botão de copiar permite trazer o diagnóstico para análise, sem guardar credenciais. Esse recurso permite verificar Edge, Chrome e outros navegadores no aparelho real; não representa uma garantia de compatibilidade com todas as versões antigas.

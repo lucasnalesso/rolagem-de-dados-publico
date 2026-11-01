@@ -92,10 +92,10 @@
   stop(){this.disconnect();const context=this.context;this.context=null;if(context&&context.state!=='closed')context.close().catch(()=>{})}
  }
  async function protectMicrophone(track){
-  // Keep the capture settings used before microphone amplification was introduced.
-  // Apply cancellation before any optional manual gain, never to the music output.
-  try{await track.applyConstraints({echoCancellation:true,noiseSuppression:true,autoGainControl:false,channelCount:1})}
+  // Require AEC when supported, but preserve capture on older browsers.
+  try{await track.applyConstraints({echoCancellation:{exact:true},noiseSuppression:{ideal:true},autoGainControl:{ideal:false},channelCount:{ideal:1}})}
   catch{try{await track.applyConstraints({echoCancellation:true,noiseSuppression:true,autoGainControl:false})}catch{}}
+  return track.getSettings?.().echoCancellation??null;
  }
  window.MesaVoiceAudio={MicrophoneInput,gainStage,protectMicrophone};
 })();
