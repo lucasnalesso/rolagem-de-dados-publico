@@ -76,14 +76,14 @@ A música continua em seu elemento de áudio próprio. Os controles de volume da
 
 Em **Opções da mesa → Som da câmera**, **Volume recebido** ajusta apenas as vozes ouvidas neste aparelho, até 300%. **Meu microfone enviado** ajusta a própria voz que os demais recebem, de 0% a 400%, iniciando em 100%. Para elevar a voz de quem fala no PC, ajuste o controle de microfone no PC.
 
-A captura solicita ganho automático desligado, cancelamento de eco e supressão de ruído. Um processamento separado amplifica somente o microfone e limita picos antes de enviar a faixa pelo WebRTC; ele não conecta o microfone aos alto-falantes locais e não mistura a trilha musical. O mute atua na faixa original e na processada, e o processamento é encerrado ao sair ou encerrar a transmissão.
+A captura solicita cancelamento de eco e supressão de ruído, com nivelamento automático conforme a opção da mesa. Um processamento separado amplifica somente o microfone e limita picos antes de enviar a faixa pelo WebRTC; ele não conecta o microfone aos alto-falantes locais e não mistura a trilha musical. O mute atua na faixa original e na processada, e o processamento é encerrado ao sair ou encerrar a transmissão.
 
 Se o navegador não oferecer o processamento, a chamada continua com a faixa original e a tela informa essa limitação. Para aplicar a atualização em chamadas já abertas, recarregue a página e reative câmera e microfone.
 
 
 ## Correção de eco e caminho de baixa latência
 
-A configuração inicial da chamada usa 100% para microfone e recepção. Com antirretorno reforçado desligado e volume enviado em 100%, a faixa capturada com cancelamento de eco, supressão de ruído e ganho automático desligado é enviada diretamente pelo WebRTC. Com o antirretorno ligado, o envio passa pelo controle de proteção. A atualização redefine uma única vez os antigos ganhos automáticos elevados; os controles manuais continuam disponíveis.
+A configuração inicial da chamada usa 100% para microfone e recepção. Com antirretorno reforçado desligado e volume enviado em 100%, a faixa capturada com cancelamento de eco, supressão de ruído e nivelamento configurado é enviada diretamente pelo WebRTC. Com o antirretorno ligado, o envio passa pelo controle de proteção. A atualização redefine uma única vez os antigos ganhos automáticos elevados; os controles manuais continuam disponíveis.
 
 Alterar o ganho manual troca somente a faixa de áudio dos emissores. Ao retornar a 100%, o envio volta à faixa nativa antes de encerrar a amplificação. O compressor com antecipação foi retirado do ganho manual; a proteção de picos permanece. A visualização não recarrega a faixa de vídeo quando ela já é a mesma, e cada participante mantém uma única rota de reprodução de voz.
 
@@ -92,7 +92,7 @@ PC e celular devem recarregar a página e reabrir a chamada para utilizar a atua
 
 ### Ajuste manual do microfone e retorno de voz
 
-A captura voltou a solicitar cancelamento de eco e supressão de ruído com ganho automático desligado, como antes da introdução da amplificação do microfone. O controle enviado de 0% a 400% permanece disponível mesmo com a proteção de alto-falantes ativada. Com o antirretorno reforçado desligado, 100% envia a faixa original. Com ele ligado ou nos demais valores, o processamento atua somente na entrada do microfone e nunca a conecta aos alto-falantes locais. A proteção de alto-falantes controla somente a rota e o volume recebido; não bloqueia o ajuste do microfone. O navegador volta a administrar o buffer de áudio sem um alvo adicional fixado pelo app.
+A captura mantém cancelamento de eco e supressão de ruído e oferece controle de nivelamento automático, separado do ganho manual. O controle enviado de 0% a 400% permanece disponível mesmo com a proteção de alto-falantes ativada. Com o antirretorno reforçado desligado, 100% envia a faixa original. Com ele ligado ou nos demais valores, o processamento atua somente na entrada do microfone e nunca a conecta aos alto-falantes locais. A proteção de alto-falantes controla somente a rota e o volume recebido; não bloqueia o ajuste do microfone. O navegador volta a administrar o buffer de áudio sem um alvo adicional fixado pelo app.
 
 Após atualizar, encerre e reabra a chamada nos dois aparelhos para recapturar o microfone com as novas configurações. Testes de sinal e interface não substituem uma chamada real para confirmar o fim do retorno acústico entre os aparelhos.
 
@@ -120,3 +120,12 @@ O servidor informa uma identificação de execução nos eventos. Uma aba detect
 As mensagens de oferta, resposta e ICE são vinculadas à sessão local e à do destinatário; mensagens antigas não são aplicadas à nova conexão. Cada par tem um iniciador determinístico. Apenas o iniciador cria as faixas iniciais, em ordem áudio/vídeo; quem responde associa seu microfone e vídeo às faixas da oferta recebida. Isso evita faixas locais não negociadas e chamadas conectadas que só recebem som em um lado. Uma falha de carregamento do diagnóstico não bloqueia o início da mídia.
 
 Validação: testes de reinício/cursor, mensagens de sessão antiga, associação de faixas, diagnóstico opcional e integração com dois participantes sintéticos. Nos dois lados foram confirmadas uma faixa de voz enviada e uma recebida, com áudio/vídeo em sendrecv. Após limpar a sinalização para simular reinício, os dois reentraram, reconectaram e mantiveram a mesma captura. Isso não constitui teste acústico nos aparelhos reais.
+
+
+### Nivelar minha voz automaticamente
+
+Em **Opções da mesa → Som da câmera**, a opção **Nivelar minha voz automaticamente** solicita o controle automático de ganho nativo do navegador antes do envio do microfone. É ativada inicialmente; o diagnóstico informa o estado efetivo, sem declarar suporte quando o navegador não o informa. Pode ser ligada/desligada durante a chamada aplicando as restrições à faixa capturada existente, sem repetir permissões, trocar emissores ou reconectar áudio/vídeo.
+
+Na primeira atualização, o ganho manual começa em 100% para não empilhar a antiga amplificação de 400% sobre o nivelamento. Ao ativar a opção durante uma chamada, ganhos acima de 100% também voltam a 100%; o controle manual continua disponível depois. Cancelamento de eco, redução de ruído, antirretorno e a proteção de picos já existente são preservados. A trilha não passa por esse ajuste.
+
+Validação: solicitações de captura normal/compatível, alternativa quando a restrição obrigatória não é aceita, aplicação ligada/desligada à faixa existente e integração de dois participantes sintéticos, mantendo uma captura e áudio/vídeo em sendrecv após o ajuste. A intensidade percebida no Galaxy deve ser confirmada em chamada real, com o ganho automático informado como ativado no diagnóstico.

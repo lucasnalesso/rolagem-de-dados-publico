@@ -91,10 +91,10 @@
   }
   stop(){this.disconnect();const context=this.context;this.context=null;if(context&&context.state!=='closed')context.close().catch(()=>{})}
  }
- async function protectMicrophone(track){
+ async function protectMicrophone(track,autoLevel=true){
   // Require AEC when supported, but preserve capture on older browsers.
-  try{await track.applyConstraints({echoCancellation:{exact:true},noiseSuppression:{ideal:true},autoGainControl:{ideal:false},channelCount:{ideal:1}})}
-  catch{try{await track.applyConstraints({echoCancellation:true,noiseSuppression:true,autoGainControl:false})}catch{}}
+  try{await track.applyConstraints({echoCancellation:{exact:true},noiseSuppression:{ideal:true},autoGainControl:{ideal:autoLevel},channelCount:{ideal:1}})}
+  catch{try{await track.applyConstraints({echoCancellation:true,noiseSuppression:true,autoGainControl:autoLevel})}catch{}}
   return track.getSettings?.().echoCancellation??null;
  }
  window.MesaVoiceAudio={MicrophoneInput,gainStage,protectMicrophone};
