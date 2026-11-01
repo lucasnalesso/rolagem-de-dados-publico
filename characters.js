@@ -56,7 +56,8 @@ function mountCharacterEditor(npc) {
   return Math.min(99,Math.max(minimum,Number(data[weapon?'layout.weaponRows':'layout.magicIIRows'])||minimum,inferred));
  }
  function addSpaceButton(kind){
-  return `<button type="button" class="character-add-space" data-add-sheet-section="${kind}" ${expandableCount(kind)>=99?'disabled':''}>＋ Adicionar mais ${kind==='weapons'?'armas':'magias'}</button>`;
+  const add=`<button type="button" class="character-add-space" data-add-sheet-section="${kind}" ${expandableCount(kind)>=99?'disabled':''}>＋ Adicionar mais ${kind==='weapons'?'armas':'magias'}</button>`;
+  return kind==='weapons'?`<div class="character-space-actions">${add}<button type="button" class="character-add-space character-remove-space" data-remove-weapon title="Excluir a última linha adicional de armas" ${expandableCount(kind)<=6?'disabled':''}>Excluir</button></div>`:add;
  }
  function combatPage() {
   let body = section('Identificação', fields('identity.', [['name','Nome do personagem'],['class','Classe'],['race','Raça'],['alignment','Tendência'],['level','Nível'],['ageSex','Idade e sexo'],['weightHeight','Peso e altura'],['hairEyes','Cabelos e olhos'],['player','Jogador']]) + field('identity.appearance','Aparência geral / descrição do personagem',true));
@@ -262,6 +263,18 @@ function mountCharacterEditor(npc) {
   const key=kind==='weapons'?`weapons.${current}.name`:`spells.${10+current}.name`;
   const input=el('characterFields').querySelector(`[data-field="${key}"]`);input?.scrollIntoView({block:'center'});input?.focus({preventScroll:true});
   status('Novo espaço criado. Salvando na sala…');
+ });
+ el('characterFields').addEventListener('click',event=>{
+  const button=event.target.closest('[data-remove-weapon]');if(!button||!editable())return;
+  const count=expandableCount('weapons');if(count<=6)return;
+  const local=draft(selected),prefix=`weapons.${count-1}.`,keys=Object.keys(local.fields).filter(key=>key.startsWith(prefix));
+  if(keys.some(key=>local.fields[key].trim())&&!confirm(`Excluir a linha adicional de arma ${count} e seu preenchimento?`))return;
+  for(const key of keys)delete local.fields[key];
+  local.fields['layout.weaponRows']=String(count-1);local.dirty=true;local.blocked=false;
+  persist(selected);renderPage();scheduleSave(selected);
+  const actions=el('characterFields').querySelector('.character-space-actions');actions?.scrollIntoView({block:'center'});
+  actions?.querySelector('[data-add-sheet-section="weapons"]')?.focus({preventScroll:true});
+  status('Última linha adicional de armas excluída. Salvando na sala…');
  });
  el('characterFields').addEventListener('input',event=>{
   const key=event.target.dataset.field;if(!key||!editable())return;
