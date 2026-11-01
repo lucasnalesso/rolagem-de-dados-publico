@@ -52,3 +52,14 @@ Em **Opções da mesa → Planos de fundos → Enviar plano**, é possível esco
 No leitor de PDF, **←** e **→** navegam pelas páginas. Os atalhos não interferem quando o foco está nos campos de página ou busca.
 
 Nas fichas de jogadores e NPCs, **Adicionar mais armas** adiciona uma linha à tabela de armas. Em **Magias II**, **Adicionar mais magias** acrescenta uma ficha de magia. Quantidade e preenchimento são salvos junto ao personagem; os espaços anteriores são mantidos.
+
+
+## Salvar livros na nuvem
+
+Depois de enviar um PDF, abra-o e clique em **Salvar**, ao lado de **Excluir livro**. A indicação **Salvo na nuvem** aparece somente após a confirmação do armazenamento. O envio inicial continua temporário até essa ação.
+
+O servidor guarda os PDFs em um bucket privado `mesa-books-private` do Supabase, usando as credenciais privadas já configuradas no Render. Partes de até 4 MiB permitem manter o limite de PDF de 100 MB sem depender de um arquivo único grande. O índice dos livros usa um namespace separado na tabela privada existente, sem alterar fichas de jogadores ou NPCs.
+
+Após reinícios do Render, o índice é recuperado da nuvem; o PDF é reconstruído e verificado por SHA-256 quando aberto. O servidor envia o PDF ao navegador sem revelar chaves nem caminhos privados do armazenamento.
+
+**Excluir livro** remove também a cópia da nuvem. Erros de armazenamento são exibidos e não confirmam um salvamento incompleto. A disponibilidade continua sujeita ao espaço e ao funcionamento do projeto Supabase; nenhum plano pago é ativado pelo aplicativo.

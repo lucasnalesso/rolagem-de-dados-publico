@@ -10,11 +10,13 @@ import hashlib
 import hmac
 import re
 import secrets
+import shutil
 import sys
 import threading
 import time
 import uuid
 from character_store import CharacterError, CharacterStore
+from book_store import BookError, BookStore
 
 ROOT = Path(__file__).resolve().parent
 DATA_ROOT = Path(os.environ.get("MESA_DATA_DIR", str(ROOT / ".mesa-data"))).resolve()
@@ -23,6 +25,8 @@ MUSIC_DATA = DATA_ROOT / "music"
 TEMP_IMAGE_DATA = DATA_ROOT / "temporary-images"
 BOOK_DATA = DATA_ROOT / "books"
 character_store = CharacterStore(DATA_ROOT)
+book_store = BookStore(character_store)
+book_lock = threading.RLock()
 MAX_SHEET_BYTES = 20 * 1024 * 1024
 MUSIC_TYPES = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg",
                ".m4a": "audio/mp4", ".aac": "audio/aac", ".flac": "audio/flac", ".webm": "audio/webm"}
@@ -82,8 +86,23 @@ def read_book_index(room):
         return []
 
 
-def read_book_capacity(room):
-    highest = max((int(item.get("slot", 0)) + 1 for item in read_book_index(room)), default=3)
+def merged_book_index(room):
+    local = {item["id"]: item for item in read_book_index(room)}
+    for item in book_store.list(room):
+        local[item["id"]] = item
+    return list(local.values())
+
+
+def write_book_index(room, records):
+    path = book_index_path(room)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name("index.tmp")
+    temporary.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
+    temporary.replace(path)
+
+
+def read_book_capacity(room, records=None):
+    highest = max((int(item.get("slot", 0)) + 1 for item in (read_book_index(room) if records is None else records)), default=3)
     try:
         saved = int(json.loads((BOOK_DATA / room / "slots.json").read_text(encoding="utf-8")))
     except (OSError, ValueError, TypeError):
@@ -92,7 +111,7 @@ def read_book_capacity(room):
 
 
 def public_book(record):
-    return {key: record[key] for key in ("id", "filename", "bytes", "uploadedAt", "slot") if key in record}
+    return {key: record[key] for key in ("id", "filename", "bytes", "uploadedAt", "slot", "cloudSaved", "savedAt") if key in record}
 
 
 def music_index_path(room):
@@ -235,30 +254,38 @@ class Handler(SimpleHTTPRequestHandler):
             room = query.get("room", [""])[0]
             if not valid_room(room):
                 return self.send_json({"error": "sala inválida"}, 400)
-            books = sorted(read_book_index(room), key=lambda item: item.get("slot", 0))
-            return self.send_json({"books": [public_book(item) for item in books], "capacity": read_book_capacity(room)})
+            try:
+                books = sorted(merged_book_index(room), key=lambda item: item.get("slot", 0))
+                return self.send_json({"books": [public_book(item) for item in books],
+                                       "capacity": read_book_capacity(room, books), "cloudAvailable": book_store.cloud})
+            except BookError as error:
+                return self.send_json({"error": str(error)}, error.status)
 
         if parsed.path == "/api/books/file":
-            room = query.get("room", [""])[0]
-            file_id = query.get("id", [""])[0]
+            room, file_id = query.get("room", [""])[0], query.get("id", [""])[0]
             if not valid_room(room) or not re.fullmatch(r"[a-f0-9]{32}", file_id):
                 return self.send_json({"error": "livro não encontrado"}, 404)
-            record = next((item for item in read_book_index(room) if item.get("id") == file_id), None)
-            if not record:
-                return self.send_json({"error": "livro não encontrado"}, 404)
-            file_path = (BOOK_DATA / room / record.get("stored", "")).resolve()
             try:
+                record = next((item for item in merged_book_index(room) if item.get("id") == file_id), None)
+                if not record:
+                    return self.send_json({"error": "livro não encontrado"}, 404)
+                file_path = (BOOK_DATA / room / record.get("stored", "")).resolve()
                 file_path.relative_to((BOOK_DATA / room).resolve())
-                data = file_path.read_bytes()
+                if not file_path.is_file():
+                    book_store.recover(record, file_path)
+                length = file_path.stat().st_size
+            except BookError as error:
+                return self.send_json({"error": str(error)}, error.status)
             except (ValueError, OSError):
                 return self.send_json({"error": "livro não encontrado"}, 404)
             self.send_response(200)
             self.send_header("Content-Type", "application/pdf")
-            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Length", str(length))
             self.send_header("Content-Disposition", "inline")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
-            self.wfile.write(data)
+            with file_path.open("rb") as source:
+                shutil.copyfileobj(source, self.wfile, length=256 * 1024)
             return
 
         if parsed.path == "/api/music":
@@ -388,6 +415,8 @@ class Handler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path in ("/api/characters", "/api/npcs"):
             return self.save_character(npc=parsed.path == "/api/npcs")
+        if parsed.path == "/api/books/save":
+            return self.save_book(parse_qs(parsed.query))
         if parsed.path == "/api/books/add-slot":
             return self.add_book_slot(parse_qs(parsed.query))
         if parsed.path == "/api/books":
@@ -555,8 +584,11 @@ class Handler(SimpleHTTPRequestHandler):
         room, player_id = query.get("room", [""])[0], query.get("player", [""])[0]
         if not valid_room(room) or not PLAYER_ID_RE.fullmatch(player_id):
             return self.send_json({"error": "Sala ou jogador inválido."}, 400)
-        with lock:
-            capacity = read_book_capacity(room)
+        with book_lock:
+            try:
+                capacity = read_book_capacity(room, merged_book_index(room))
+            except BookError as error:
+                return self.send_json({"error": str(error)}, error.status)
             if capacity >= MAX_BOOK_SLOTS:
                 return self.send_json({"error": "A sala já possui 99 espaços de livros."}, 409)
             folder = BOOK_DATA / room
@@ -591,9 +623,13 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json({"error": "O arquivo enviado não parece ser um PDF válido."}, 415)
         room_dir = BOOK_DATA / room
         room_dir.mkdir(parents=True, exist_ok=True)
-        with lock:
+        with book_lock:
             records = read_book_index(room)
-            if any(item.get("slot") == slot for item in records):
+            try:
+                occupied = any(item.get("slot") == slot for item in merged_book_index(room))
+            except BookError as error:
+                return self.send_json({"error": str(error)}, error.status)
+            if occupied:
                 return self.send_json({"error": "Este espaço já tem um livro. Abra-o e exclua-o antes de enviar outro."}, 409)
             file_id = uuid.uuid4().hex
             record = {"id": file_id, "filename": filename[:180] or "livro.pdf", "bytes": length,
@@ -607,29 +643,47 @@ class Handler(SimpleHTTPRequestHandler):
             temp_path.replace(index_path)
         return self.send_json({"book": public_book(record)})
 
+    def save_book(self, query):
+        room, file_id = query.get("room", [""])[0], query.get("id", [""])[0]
+        player = query.get("player", [""])[0]
+        if not valid_room(room) or not re.fullmatch(r"[a-f0-9]{32}", file_id) or not PLAYER_ID_RE.fullmatch(player):
+            return self.send_json({"error": "Livro ou jogador inválido."}, 400)
+        try:
+            with book_lock:
+                record = next((item for item in merged_book_index(room) if item.get("id") == file_id), None)
+                if not record:
+                    return self.send_json({"error": "Livro não encontrado. Envie o PDF novamente."}, 404)
+                if record.get("cloudSaved"):
+                    return self.send_json({"book": public_book(record)})
+                path = (BOOK_DATA / room / record["stored"]).resolve()
+                path.relative_to((BOOK_DATA / room).resolve())
+                saved = book_store.save(room, record, path)
+                return self.send_json({"book": public_book(saved)})
+        except BookError as error:
+            return self.send_json({"error": str(error)}, error.status)
+        except (OSError, ValueError):
+            return self.send_json({"error": "Não foi possível ler o PDF para salvar. Envie-o novamente."}, 404)
+
     def delete_book(self, query):
-        room = query.get("room", [""])[0]
-        file_id = query.get("id", [""])[0]
+        room, file_id = query.get("room", [""])[0], query.get("id", [""])[0]
         if not valid_room(room) or not re.fullmatch(r"[a-f0-9]{32}", file_id):
             return self.send_json({"error": "livro não encontrado"}, 404)
-        room_dir = BOOK_DATA / room
-        with lock:
-            records = read_book_index(room)
-            record = next((item for item in records if item.get("id") == file_id), None)
-            if not record:
-                return self.send_json({"error": "livro não encontrado"}, 404)
-            path = (room_dir / record.get("stored", "")).resolve()
-            try:
-                path.relative_to(room_dir.resolve())
+        try:
+            with book_lock:
+                record = next((item for item in merged_book_index(room) if item.get("id") == file_id), None)
+                if not record:
+                    return self.send_json({"error": "livro não encontrado"}, 404)
+                book_store.delete(room, record)
+                folder = BOOK_DATA / room
+                path = (folder / record["stored"]).resolve()
+                path.relative_to(folder.resolve())
                 path.unlink(missing_ok=True)
-            except (ValueError, OSError):
-                return self.send_json({"error": "Não foi possível excluir o livro."}, 500)
-            records = [item for item in records if item.get("id") != file_id]
-            index_path = book_index_path(room)
-            temp_path = index_path.with_name("index.tmp")
-            temp_path.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
-            temp_path.replace(index_path)
-        return self.send_json({"ok": True})
+                write_book_index(room, [item for item in read_book_index(room) if item.get("id") != file_id])
+            return self.send_json({"ok": True})
+        except BookError as error:
+            return self.send_json({"error": str(error)}, error.status)
+        except (OSError, ValueError):
+            return self.send_json({"error": "Não foi possível excluir o livro. Tente novamente."}, 500)
 
     def upload_temporary_image(self, query):
         room = query.get("room", [""])[0]
