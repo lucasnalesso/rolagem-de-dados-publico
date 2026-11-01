@@ -1,5 +1,8 @@
-.modifier{flex-wrap:wrap}
+.controls{flex-wrap:wrap;gap:12px}
+.controls>.modifier{flex-wrap:wrap;justify-content:flex-end;margin-left:auto}
+.roll-action-buttons{display:flex;align-items:stretch;gap:8px;flex-wrap:nowrap;flex-shrink:0}
+.roll-action-buttons .roll-btn{margin-left:0;white-space:nowrap}
 .modifier .private-roll-btn{border:1px solid #9e8155;background:#17120f;color:#e4cea6;padding:11px 12px;font-size:10px;font-weight:700;letter-spacing:.5px;cursor:pointer;white-space:nowrap}
 .modifier .private-roll-btn:hover{background:#30241a;border-color:#d0ad71}
 .modifier .private-roll-btn:focus-visible{outline:2px solid #e4cea6;outline-offset:3px}
-@media(max-width:700px){.modifier .private-roll-btn{flex-basis:100%;min-height:42px}}
+@media(max-width:700px){.modifier .private-roll-btn{min-height:42px}}
