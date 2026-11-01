@@ -45,5 +45,17 @@
   }
   stop(){this.disconnect();const context=this.context;this.context=null;if(context&&context.state!=='closed')context.close().catch(()=>{})}
  }
- window.MesaVoiceAudio={MicrophoneInput,gainStage};
+ async function protectMicrophone(track){
+  const capabilities=track.getCapabilities?.()||{};
+  const modes=capabilities.echoCancellation;
+  const echo=Array.isArray(modes)&&modes.includes('all')?'all':true;
+  try{await track.applyConstraints({echoCancellation:echo,noiseSuppression:true,autoGainControl:true,channelCount:1})}
+  catch{try{await track.applyConstraints({echoCancellation:true,noiseSuppression:true,autoGainControl:true})}catch{}}
+ }
+ function tuneReceiver(receiver){
+  if(receiver?.track?.kind!=='audio')return;
+  // A preferred target; the browser can increase buffering on an unstable network.
+  try{if('jitterBufferTarget' in receiver)receiver.jitterBufferTarget=60}catch{}
+ }
+ window.MesaVoiceAudio={MicrophoneInput,gainStage,protectMicrophone,tuneReceiver};
 })();
