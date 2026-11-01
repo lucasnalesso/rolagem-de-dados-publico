@@ -46,16 +46,10 @@
   stop(){this.disconnect();const context=this.context;this.context=null;if(context&&context.state!=='closed')context.close().catch(()=>{})}
  }
  async function protectMicrophone(track){
-  const capabilities=track.getCapabilities?.()||{};
-  const modes=capabilities.echoCancellation;
-  const echo=Array.isArray(modes)&&modes.includes('all')?'all':true;
-  try{await track.applyConstraints({echoCancellation:echo,noiseSuppression:true,autoGainControl:true,channelCount:1})}
-  catch{try{await track.applyConstraints({echoCancellation:true,noiseSuppression:true,autoGainControl:true})}catch{}}
+  // Keep the capture settings used before microphone amplification was introduced.
+  // Apply cancellation before any optional manual gain, never to the music output.
+  try{await track.applyConstraints({echoCancellation:true,noiseSuppression:true,autoGainControl:false,channelCount:1})}
+  catch{try{await track.applyConstraints({echoCancellation:true,noiseSuppression:true,autoGainControl:false})}catch{}}
  }
- function tuneReceiver(receiver){
-  if(receiver?.track?.kind!=='audio')return;
-  // A preferred target; the browser can increase buffering on an unstable network.
-  try{if('jitterBufferTarget' in receiver)receiver.jitterBufferTarget=60}catch{}
- }
- window.MesaVoiceAudio={MicrophoneInput,gainStage,protectMicrophone,tuneReceiver};
+ window.MesaVoiceAudio={MicrophoneInput,gainStage,protectMicrophone};
 })();

@@ -76,15 +76,22 @@ A música continua em seu elemento de áudio próprio. Os controles de volume da
 
 Em **Opções da mesa → Som da câmera**, **Volume recebido** ajusta apenas as vozes ouvidas neste aparelho, até 300%. **Meu microfone enviado** ajusta a própria voz que os demais recebem, de 0% a 400%, iniciando em 100%. Para elevar a voz de quem fala no PC, ajuste o controle de microfone no PC.
 
-A captura solicita nivelamento automático de ganho, cancelamento de eco e supressão de ruído. Um processamento separado amplifica somente o microfone e limita picos antes de enviar a faixa pelo WebRTC; ele não conecta o microfone aos alto-falantes locais e não mistura a trilha musical. O mute atua na faixa original e na processada, e o processamento é encerrado ao sair ou encerrar a transmissão.
+A captura solicita ganho automático desligado, cancelamento de eco e supressão de ruído. Um processamento separado amplifica somente o microfone e limita picos antes de enviar a faixa pelo WebRTC; ele não conecta o microfone aos alto-falantes locais e não mistura a trilha musical. O mute atua na faixa original e na processada, e o processamento é encerrado ao sair ou encerrar a transmissão.
 
 Se o navegador não oferecer o processamento, a chamada continua com a faixa original e a tela informa essa limitação. Para aplicar a atualização em chamadas já abertas, recarregue a página e reative câmera e microfone.
 
 
 ## Correção de eco e caminho de baixa latência
 
-A configuração inicial da chamada usa 100% para microfone e recepção. Nessa posição, a faixa capturada com cancelamento de eco, supressão de ruído e nivelamento automático é enviada diretamente pelo WebRTC, sem a ponte de amplificação. A atualização redefine uma única vez os antigos ganhos automáticos elevados; os controles manuais continuam disponíveis.
+A configuração inicial da chamada usa 100% para microfone e recepção. Nessa posição, a faixa capturada com cancelamento de eco, supressão de ruído e ganho automático desligado é enviada diretamente pelo WebRTC, sem a ponte de amplificação. A atualização redefine uma única vez os antigos ganhos automáticos elevados; os controles manuais continuam disponíveis.
 
 Alterar o ganho manual troca somente a faixa de áudio dos emissores. Ao retornar a 100%, o envio volta à faixa nativa antes de encerrar a amplificação. O compressor com antecipação foi retirado do ganho manual; a proteção de picos permanece. A visualização não recarrega a faixa de vídeo quando ela já é a mesma, e cada participante mantém uma única rota de reprodução de voz.
 
 PC e celular devem recarregar a página e reabrir a chamada para utilizar a atualização. Atrasos inerentes à rede e ao processamento do aparelho não podem ser zerados pelo site. Ganhos elevados e caixas de som continuam podendo produzir realimentação; comece em 100% e mantenha somente uma aba da chamada por aparelho.
+
+
+### Ajuste manual do microfone e retorno de voz
+
+A captura voltou a solicitar cancelamento de eco e supressão de ruído com ganho automático desligado, como antes da introdução da amplificação do microfone. O controle enviado de 0% a 400% permanece disponível mesmo com a proteção de alto-falantes ativada. Em 100%, a faixa original é enviada; nos demais valores, o ajuste manual processa somente a entrada do microfone e nunca a conecta aos alto-falantes locais. A proteção de alto-falantes controla somente a rota e o volume recebido; não bloqueia o ajuste do microfone. O navegador volta a administrar o buffer de áudio sem um alvo adicional fixado pelo app.
+
+Após atualizar, encerre e reabra a chamada nos dois aparelhos para recapturar o microfone com as novas configurações. Testes de sinal e interface não substituem uma chamada real para confirmar o fim do retorno acústico entre os aparelhos.
