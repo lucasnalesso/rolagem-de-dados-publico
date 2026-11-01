@@ -111,3 +111,12 @@ Validação: sinais sintéticos para silêncio, retomada, volumes 25%/200%, mute
 Em **Opções da mesa → Som da câmera → Verificar áudio da chamada**, o diagnóstico mostra os valores efetivos informados pela faixa capturada: cancelamento de eco, redução de ruído e ganho automático. Quando o navegador não informa uma propriedade, ela é mostrada como desconhecida, sem afirmar que o recurso foi ativado. A captura tenta exigir cancelamento de eco, com uma alternativa para navegadores que não aceitam a restrição obrigatória.
 
 A sala compartilha somente estados de áudio e volumes entre os participantes ativos, usando a sinalização existente. Não grava áudio nem envia identificadores de dispositivo ou o nome do microfone; esse nome aparece apenas no diagnóstico local. O resumo dos outros participantes é atualizado a cada dez segundos enquanto a câmera está ativa. O botão de copiar permite trazer o diagnóstico para análise, sem guardar credenciais. Esse recurso permite verificar Edge, Chrome e outros navegadores no aparelho real; não representa uma garantia de compatibilidade com todas as versões antigas.
+
+
+### Recuperação de sinalização e associação de áudio
+
+O servidor informa uma identificação de execução nos eventos. Uma aba detecta reinícios e cursores antigos, reentra na sala e anuncia novamente a mídia sem repetir a captura de câmera/microfone. Isso evita a espera indefinida por números de eventos que pertenciam ao servidor anterior. O diagnóstico mostra também o estado das conexões e a quantidade de faixas de áudio recebidas.
+
+As mensagens de oferta, resposta e ICE são vinculadas à sessão local e à do destinatário; mensagens antigas não são aplicadas à nova conexão. Cada par tem um iniciador determinístico. Apenas o iniciador cria as faixas iniciais, em ordem áudio/vídeo; quem responde associa seu microfone e vídeo às faixas da oferta recebida. Isso evita faixas locais não negociadas e chamadas conectadas que só recebem som em um lado. Uma falha de carregamento do diagnóstico não bloqueia o início da mídia.
+
+Validação: testes de reinício/cursor, mensagens de sessão antiga, associação de faixas, diagnóstico opcional e integração com dois participantes sintéticos. Nos dois lados foram confirmadas uma faixa de voz enviada e uma recebida, com áudio/vídeo em sendrecv. Após limpar a sinalização para simular reinício, os dois reentraram, reconectaram e mantiveram a mesma captura. Isso não constitui teste acústico nos aparelhos reais.

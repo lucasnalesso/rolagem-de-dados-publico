@@ -7,7 +7,9 @@ function readCallAudioStatus(){
   context:microphoneInput.context?.state||'native',guard:echoProtection,
   guardReady:microphoneInput.guardEnabled,gateOpen:microphoneInput.gateOpen,
   references:microphoneInput.references.length,outputMuted:outputMuted||!remoteAudioUnlocked,
-  inputVolume:microphoneGain,outputVolume};
+  inputVolume:microphoneGain,outputVolume,
+  connections:peers.size,connectionStates:[...peers.values()].map(pc=>pc.connectionState),
+  incomingAudio:[...remoteStreams.values()].reduce((count,stream)=>count+stream.getAudioTracks().filter(track=>track.readyState==='live').length,0)};
 }
 function sanitizeCallAudioStatus(value){
  if(!value||typeof value!=='object')return null;
@@ -15,7 +17,8 @@ function sanitizeCallAudioStatus(value){
  for(const key of ['capturing','microphoneMuted','noiseSuppression','autoGainControl','processed','guard','guardReady','gateOpen','outputMuted'])status[key]=typeof value[key]==='boolean'?value[key]:null;
  status.echoCancellation=[true,false,'all','remote-only'].includes(value.echoCancellation)?value.echoCancellation:null;
  status.context=['native','running','suspended','closed','interrupted'].includes(value.context)?value.context:'unknown';
- for(const key of ['references','inputVolume','outputVolume'])status[key]=typeof value[key]==='number'&&Number.isFinite(value[key])?Math.max(0,Math.min(400,value[key])):null;
+ for(const key of ['references','inputVolume','outputVolume','connections','incomingAudio'])status[key]=typeof value[key]==='number'&&Number.isFinite(value[key])?Math.max(0,Math.min(400,value[key])):null;
+ status.connectionStates=Array.isArray(value.connectionStates)?value.connectionStates.filter(state=>['new','connecting','connected','disconnected','failed','closed'].includes(state)).slice(0,5):[];
  return status;
 }
 async function publishCallAudioStatus(){
@@ -25,7 +28,9 @@ async function publishCallAudioStatus(){
 function callAudioStatusText(title,status){
  if(!status)return title+'\nAguardando atualização do outro aparelho.';
  const state=value=>value===true?'ativado':value===false?'desativado':'não informado pelo navegador';
- return [title,'Microfone: '+(status.capturing?(status.microphoneMuted?'silenciado':'capturando'):'sem captura'),
+ return [title,'Conexões: '+(status.connections??'não informado')+' · '+(status.connectionStates?.join(', ')||'sem conexão'),
+  'Faixas de áudio recebidas: '+(status.incomingAudio??'não informado'),
+  'Microfone: '+(status.capturing?(status.microphoneMuted?'silenciado':'capturando'):'sem captura'),
   'Cancelamento de eco: '+state(status.echoCancellation===true||typeof status.echoCancellation==='string'?true:status.echoCancellation),
   'Redução de ruído: '+state(status.noiseSuppression),'Ganho automático: '+state(status.autoGainControl),
   'Volume enviado / recebido: '+status.inputVolume+'% / '+status.outputVolume+'%',

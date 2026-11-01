@@ -52,6 +52,7 @@ SHEET_TYPES = {
     ".png": ("image/png", b"\x89PNG\r\n\x1a\n"),
     ".webp": ("image/webp", b"RIFF"),
 }
+SERVER_EPOCH = secrets.token_hex(16)
 rooms, room_creators, creator_tokens, kicked_players = {}, {}, {}, {}
 lock = threading.Lock()
 PLAYER_ID_RE = re.compile(r"[a-fA-F0-9-]{8,64}")
@@ -351,6 +352,16 @@ class Handler(SimpleHTTPRequestHandler):
                 since = int(query.get("since", ["0"])[0])
             except ValueError:
                 return self.send_json({"error": "cursor inválido"}, 400)
+            client_epoch = query.get("epoch", [""])[0]
+            with lock:
+                latest = rooms.get(room, [])
+                latest_id = latest[-1]["id"] if latest else 0
+            if (
+                client_epoch and client_epoch != SERVER_EPOCH
+            ) or since > latest_id:
+                return self.send_json(
+                    {"events": [], "epoch": SERVER_EPOCH, "reset": True}
+                )
             deadline = time.time() + 20
             while time.time() < deadline:
                 with lock:
@@ -367,9 +378,11 @@ class Handler(SimpleHTTPRequestHandler):
                             continue
                         events.append(item)
                 if events:
-                    return self.send_json({"events": events})
+                    return self.send_json(
+                        {"events": events, "epoch": SERVER_EPOCH}
+                    )
                 time.sleep(0.35)
-            return self.send_json({"events": []})
+            return self.send_json({"events": [], "epoch": SERVER_EPOCH})
 
         if parsed.path == "/api/books":
             room = query.get("room", [""])[0]
@@ -752,7 +765,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json(
                     {"error": "candidato de rede inválido"}, 400
                 )
-        response = {"ok": True}
+        response = {"ok": True, "epoch": SERVER_EPOCH}
         with lock:
             if kind == "join":
                 if not player:
