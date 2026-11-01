@@ -83,7 +83,7 @@ Se o navegador não oferecer o processamento, a chamada continua com a faixa ori
 
 ## Correção de eco e caminho de baixa latência
 
-A configuração inicial da chamada usa 100% para microfone e recepção. Nessa posição, a faixa capturada com cancelamento de eco, supressão de ruído e ganho automático desligado é enviada diretamente pelo WebRTC, sem a ponte de amplificação. A atualização redefine uma única vez os antigos ganhos automáticos elevados; os controles manuais continuam disponíveis.
+A configuração inicial da chamada usa 100% para microfone e recepção. Com antirretorno reforçado desligado e volume enviado em 100%, a faixa capturada com cancelamento de eco, supressão de ruído e ganho automático desligado é enviada diretamente pelo WebRTC. Com o antirretorno ligado, o envio passa pelo controle de proteção. A atualização redefine uma única vez os antigos ganhos automáticos elevados; os controles manuais continuam disponíveis.
 
 Alterar o ganho manual troca somente a faixa de áudio dos emissores. Ao retornar a 100%, o envio volta à faixa nativa antes de encerrar a amplificação. O compressor com antecipação foi retirado do ganho manual; a proteção de picos permanece. A visualização não recarrega a faixa de vídeo quando ela já é a mesma, e cada participante mantém uma única rota de reprodução de voz.
 
@@ -92,6 +92,15 @@ PC e celular devem recarregar a página e reabrir a chamada para utilizar a atua
 
 ### Ajuste manual do microfone e retorno de voz
 
-A captura voltou a solicitar cancelamento de eco e supressão de ruído com ganho automático desligado, como antes da introdução da amplificação do microfone. O controle enviado de 0% a 400% permanece disponível mesmo com a proteção de alto-falantes ativada. Em 100%, a faixa original é enviada; nos demais valores, o ajuste manual processa somente a entrada do microfone e nunca a conecta aos alto-falantes locais. A proteção de alto-falantes controla somente a rota e o volume recebido; não bloqueia o ajuste do microfone. O navegador volta a administrar o buffer de áudio sem um alvo adicional fixado pelo app.
+A captura voltou a solicitar cancelamento de eco e supressão de ruído com ganho automático desligado, como antes da introdução da amplificação do microfone. O controle enviado de 0% a 400% permanece disponível mesmo com a proteção de alto-falantes ativada. Com o antirretorno reforçado desligado, 100% envia a faixa original. Com ele ligado ou nos demais valores, o processamento atua somente na entrada do microfone e nunca a conecta aos alto-falantes locais. A proteção de alto-falantes controla somente a rota e o volume recebido; não bloqueia o ajuste do microfone. O navegador volta a administrar o buffer de áudio sem um alvo adicional fixado pelo app.
 
 Após atualizar, encerre e reabra a chamada nos dois aparelhos para recapturar o microfone com as novas configurações. Testes de sinal e interface não substituem uma chamada real para confirmar o fim do retorno acústico entre os aparelhos.
+
+
+### Antirretorno reforçado para alto-falantes
+
+O teste de silenciar o microfone do outro aparelho confirmou que o retorno vem pela captura remota. Além do cancelamento nativo, o modo **Antirretorno reforçado** analisa somente as faixas de voz recebidas e reduz o envio do microfone enquanto existe reprodução de outra voz, liberando-o após uma breve margem de 240 ms. Essa proteção interrompe a realimentação, mas pode limitar falas simultâneas; a limitação é informada na interface. Para conversa simultânea com fones, a opção pode ser desligada.
+
+O ajuste de volume enviado permanece disponível de 0% a 400%. As referências recebidas não são misturadas ao microfone e não criam outra saída de som. A trilha não é analisada nem regulada por essa proteção. Ao mutar a reprodução da chamada, o antirretorno libera o microfone, respeitando o mute manual dele. As análises e temporizadores são removidos ao encerrar a transmissão.
+
+Validação: sinais sintéticos para silêncio, retomada, volumes 25%/200%, mute e limpeza; dois pares WebRTC com retorno artificial atrasado de 120 ms; integração de dois participantes com captura sintética e saída única por participante. Esses testes não usam os microfones reais do usuário e não substituem a confirmação em PC/celular. Ambos precisam recarregar e reiniciar a chamada.
