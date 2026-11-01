@@ -63,3 +63,10 @@ O servidor guarda os PDFs em um bucket privado `mesa-books-private` do Supabase,
 Após reinícios do Render, o índice é recuperado da nuvem; o PDF é reconstruído e verificado por SHA-256 quando aberto. O servidor envia o PDF ao navegador sem revelar chaves nem caminhos privados do armazenamento.
 
 **Excluir livro** remove também a cópia da nuvem. Erros de armazenamento são exibidos e não confirmam um salvamento incompleto. A disponibilidade continua sujeita ao espaço e ao funcionamento do projeto Supabase; nenhum plano pago é ativado pelo aplicativo.
+
+
+## Janela da Trilha da Party
+
+O botão **Minimizar** recolhe o player; **Restaurar** devolve os controles. Essa ação é local e não pausa nem reinicia a trilha. O estado recolhido é lembrado neste navegador, e a posição do chat móvel acompanha a altura do player.
+
+A música continua em seu elemento de áudio próprio. Os controles de volume da chamada não modificam o volume da trilha, e o áudio da música não é enviado pelo processamento de voz do microfone. Filtros de voz aplicados aos alto-falantes pelo Windows ou pelo fabricante do PC ficam fora do controle do site e podem suprimir instrumentos; devem ser verificados nas configurações do aparelho.
