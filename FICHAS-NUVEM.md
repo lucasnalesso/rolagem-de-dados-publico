@@ -70,3 +70,12 @@ Após reinícios do Render, o índice é recuperado da nuvem; o PDF é reconstru
 O botão **Minimizar** recolhe o player; **Restaurar** devolve os controles. Essa ação é local e não pausa nem reinicia a trilha. O estado recolhido é lembrado neste navegador, e a posição do chat móvel acompanha a altura do player.
 
 A música continua em seu elemento de áudio próprio. Os controles de volume da chamada não modificam o volume da trilha, e o áudio da música não é enviado pelo processamento de voz do microfone. Filtros de voz aplicados aos alto-falantes pelo Windows ou pelo fabricante do PC ficam fora do controle do site e podem suprimir instrumentos; devem ser verificados nas configurações do aparelho.
+
+
+## Volume da voz nas chamadas
+
+Em **Opções da mesa → Som da câmera**, **Volume recebido** ajusta apenas as vozes ouvidas neste aparelho, até 300%. **Meu microfone enviado** ajusta a própria voz que os demais recebem, de 0% a 400%, iniciando em 200%. Para elevar a voz de quem fala no PC, ajuste o controle de microfone no PC.
+
+A captura solicita nivelamento automático de ganho, cancelamento de eco e supressão de ruído. Um processamento separado amplifica somente o microfone e limita picos antes de enviar a faixa pelo WebRTC; ele não conecta o microfone aos alto-falantes locais e não mistura a trilha musical. O mute atua na faixa original e na processada, e o processamento é encerrado ao sair ou encerrar a transmissão.
+
+Se o navegador não oferecer o processamento, a chamada continua com a faixa original e a tela informa essa limitação. Para aplicar a atualização em chamadas já abertas, recarregue a página e reative câmera e microfone.
