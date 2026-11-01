@@ -129,3 +129,11 @@ Em **Opções da mesa → Som da câmera**, a opção **Nivelar minha voz automa
 Na primeira atualização, o ganho manual começa em 100% para não empilhar a antiga amplificação de 400% sobre o nivelamento. Ao ativar a opção durante uma chamada, ganhos acima de 100% também voltam a 100%; o controle manual continua disponível depois. Cancelamento de eco, redução de ruído, antirretorno e a proteção de picos já existente são preservados. A trilha não passa por esse ajuste.
 
 Validação: solicitações de captura normal/compatível, alternativa quando a restrição obrigatória não é aceita, aplicação ligada/desligada à faixa existente e integração de dois participantes sintéticos, mantendo uma captura e áudio/vídeo em sendrecv após o ajuste. A intensidade percebida no Galaxy deve ser confirmada em chamada real, com o ganho automático informado como ativado no diagnóstico.
+
+### Fundos de câmera independentes (v30)
+
+Cada filtro possui seu próprio modelo e processamento em Worker clássico (a biblioteca WASM utiliza importScripts). A composição do vídeo continua separadamente, com apenas uma máscara em processamento e ritmo adaptável ao aparelho. Biblioteca 1.2.0 e modelo selfie landscape v1 fixados. Navegadores sem os recursos necessários usam uma instância CPU compatível, sem compartilhar modelos encerrados.
+
+Máscaras e imagens intermediárias são liberadas a cada quadro. Desligar/reativar encerra a instância anterior; falhas retornam à câmera original. A troca de faixa modifica somente vídeo e restaura a faixa anterior se o emissor rejeitar a mudança. Áudio e negociação de conexão foram preservados.
+
+Validação: sintaxe dos três scripts, liberação de recursos em sucesso/falha, restauração de emissor e comparação das funções de áudio/conexão. Integração local com dois participantes sintéticos usando fundos diferentes simultaneamente: workers ativos, contadores de máscaras/quadros avançando, uma faixa de áudio enviada/recebida em cada lado, e reativação de um filtro sem interromper o outro. O modo compatível também funcionou. Desempenho e recorte com pessoas reais devem ser confirmados nos aparelhos utilizados.

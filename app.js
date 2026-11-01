@@ -44,23 +44,83 @@ let diceSoundEnabled=localStorage.getItem('mesa:dice-sound')!=='off',diceAudioCo
 let iceServers=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'}];const iceServersReady=fetch(`/api/ice-servers?room=${encodeURIComponent(room)}`,{cache:'no-store'}).then(response=>response.ok?response.json():null).then(config=>{if(Array.isArray(config?.iceServers)&&config.iceServers.length)iceServers=config.iceServers}).catch(()=>{});
 let creatorId=null,creatorToken=localStorage.getItem(`mesa:${room}:creatorToken`);const pendingIce=new Map(),remoteStreams=new Map(),remoteAudioNodes=new Map();let remoteAudioContext=null;let microphoneGain=(()=>{const saved=Number(localStorage.getItem('mesa:microphone-gain')??100);return Number.isFinite(saved)?Math.max(0,Math.min(400,saved)):100})();const microphoneInput=new MesaVoiceAudio.MicrophoneInput();let characterSheets=[],selectedSheetPlayer=null,selectedSheetPage=1,sheetPageStart=1;
 const cameraBackgrounds=[{id:'none',name:'Sem filtro',file:''},{id:'dark-forest',name:'Floresta sombria',file:'Floresta sombria.jpg'},{id:'magic-forest',name:'Floresta mágica',file:'fundo-floresta-magica.jpg'},{id:'dragon',name:'Dragão e castelo',file:'fundo-dragao.jpg'}];let activeBackground='none',backgroundPipeline=null,customBackgroundUrl=null;
-let backgroundApplying=false,segmenterPromise=null;
-function fitImage(ctx,image,width,height){const scale=Math.max(width/image.width,height/image.height),w=image.width*scale,h=image.height*scale;ctx.drawImage(image,(width-w)/2,(height-h)/2,w,h)}
-function loadSegmenter(){if(!segmenterPromise)segmenterPromise=(async()=>{const vision=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs');const files=await vision.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'),options={runningMode:'VIDEO',outputCategoryMask:true,outputConfidenceMasks:false},modelAssetPath='https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite';try{return await vision.ImageSegmenter.createFromOptions(files,{...options,baseOptions:{modelAssetPath,delegate:'GPU'}})}catch{return vision.ImageSegmenter.createFromOptions(files,{...options,baseOptions:{modelAssetPath,delegate:'CPU'}})}})();return segmenterPromise}
-function stopBackgroundPipeline(pipeline){if(!pipeline)return;pipeline.active=false;cancelAnimationFrame(pipeline.frame);try{pipeline.segmenter.close()}catch{}pipeline.stream.getTracks().forEach(track=>track.stop());pipeline.video.srcObject=null}
-async function createBackgroundPipeline(background){const lowPower=isLowPowerDevice(),maxWidth=lowPower?360:640,inferenceInterval=lowPower?110:65,captureFps=lowPower?10:20,segmenter=await loadSegmenter(),video=document.createElement('video');video.muted=true;video.playsInline=true;video.srcObject=media;await video.play();const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{alpha:false}),maskCanvas=document.createElement('canvas'),maskCtx=maskCanvas.getContext('2d'),personCanvas=document.createElement('canvas'),personCtx=personCanvas.getContext('2d');const pipeline={segmenter,video,canvas,ctx,maskCanvas,maskCtx,personCanvas,personCtx,stream:canvas.captureStream(captureFps),image:background,active:true,frame:0,lastInference:0};const draw=()=>{if(!pipeline.active)return;pipeline.frame=requestAnimationFrame(draw);if(video.readyState<2||!video.videoWidth)return;const now=performance.now();if(now-pipeline.lastInference<inferenceInterval)return;pipeline.lastInference=now;try{if(!media?.getVideoTracks()[0]?.enabled){ctx.fillStyle='#090807';ctx.fillRect(0,0,canvas.width,canvas.height);return}const result=segmenter.segmentForVideo(video,now),mask=result.categoryMask;if(!mask)return;const width=Math.min(video.videoWidth,maxWidth),height=Math.round(width*video.videoHeight/video.videoWidth);if(canvas.width!==width||canvas.height!==height){canvas.width=personCanvas.width=maskCanvas.width=width;canvas.height=personCanvas.height=maskCanvas.height=height}ctx.clearRect(0,0,width,height);fitImage(ctx,pipeline.image,width,height);personCtx.clearRect(0,0,width,height);personCtx.drawImage(video,0,0,width,height);const mw=mask.width,mh=mask.height,values=mask.getAsUint8Array(),imageData=maskCtx.createImageData(mw,mh);for(let i=0;i<values.length;i++){const alpha=values[i]===0?255:0,j=i*4;imageData.data[j]=imageData.data[j+1]=imageData.data[j+2]=255;imageData.data[j+3]=alpha}if(maskCanvas.width!==mw||maskCanvas.height!==mh){maskCanvas.width=mw;maskCanvas.height=mh}maskCtx.putImageData(imageData,0,0);personCtx.globalCompositeOperation='destination-in';personCtx.drawImage(maskCanvas,0,0,width,height);personCtx.globalCompositeOperation='source-over';ctx.drawImage(personCanvas,0,0,width,height)}catch(error){console.warn('Falha ao processar o fundo da câmera',error)}};draw();return pipeline}
+let backgroundApplying=false,backgroundRequestController=null;
+function stopBackgroundPipeline(pipeline){pipeline?.stop()}
+async function createBackgroundPipeline(image){
+ const source=media;let pipeline;
+ pipeline=await MesaBackgroundEffects.create({stream:source,image,lowPower:isLowPowerDevice(),signal:backgroundRequestController?.signal,
+  onFailure:async error=>{
+   if(backgroundPipeline!==pipeline||media!==source)return;
+   backgroundPipeline=null;activeBackground='none';
+   try{await replaceOutgoingVideo(source.getVideoTracks()[0]);showLocalVideo(source)}catch(failure){console.warn('Falha ao restaurar câmera original',failure)}
+   pipeline.stop();selectBackgroundOption('none');
+   const status=document.getElementById('background-status');if(status)status.textContent='Câmera original restaurada após falha no filtro.';
+   toast('O aparelho não conseguiu manter o filtro. A câmera original foi restaurada.');console.warn('Filtro de vídeo interrompido',error);
+  }});
+ return pipeline;
+}
 function effectiveMicrophoneGain(){return microphoneGain}
 function needsMicrophoneProcessing(){return echoProtection||effectiveMicrophoneGain()!==100}
 function currentAudioTrack(){return (!needsMicrophoneProcessing()?null:microphoneInput.track())||media?.getAudioTracks()[0]||null}
 function currentVideoTrack(){return backgroundPipeline?.stream.getVideoTracks()[0]||media?.getVideoTracks()[0]||null}
-async function replaceOutgoingVideo(track){const updates=[];for(const pc of peers.values()){const sender=pc.getSenders().find(item=>item.track?.kind==='video'||pc.getTransceivers().some(transceiver=>transceiver.sender===item&&transceiver.receiver.track.kind==='video'));if(sender)updates.push(sender.replaceTrack(track).catch(()=>{}))}await Promise.all(updates)}
+async function replaceOutgoingVideo(track){
+ const changes=[];
+ for(const pc of peers.values()){
+  if(pc.signalingState==='closed')continue;
+  const sender=pc.getSenders().find(item=>item.track?.kind==='video'||pc.getTransceivers().some(transceiver=>transceiver.sender===item&&transceiver.receiver.track.kind==='video'));
+  if(sender)changes.push({pc,sender,previous:sender.track});
+ }
+ const results=await Promise.allSettled(changes.map(change=>change.sender.replaceTrack(track)));
+ if(results.some((result,index)=>result.status==='rejected'&&changes[index].pc.signalingState!=='closed')){
+  await Promise.allSettled(changes.map(change=>change.pc.signalingState!=='closed'?change.sender.replaceTrack(change.previous):Promise.resolve()));
+  throw new Error('Não foi possível atualizar a faixa de vídeo da chamada');
+ }
+}
 function showLocalVideo(stream){const tile=document.getElementById('v-'+uid),video=tile?.querySelector('video');if(video){video.muted=true;video.volume=0;video.srcObject=new MediaStream(stream.getVideoTracks());video.play().catch(()=>{})}}
 function selectBackgroundOption(id){document.querySelectorAll('[data-camera-background]').forEach(button=>button.classList.toggle('selected',button.dataset.cameraBackground===id))}
 function renderCameraOptions(button){let panel=document.getElementById('cameraOptionsMenu');if(panel){panel.remove();return}const rect=button.getBoundingClientRect();panel=document.createElement('aside');panel.id='cameraOptionsMenu';panel.className='camera-options-menu';panel.innerHTML=`<div class="camera-options-title"><b>PLANO DE FUNDO</b><button type="button" data-close-background-menu aria-label="Fechar">×</button></div><div class="background-options">${cameraBackgrounds.map(option=>`<button type="button" class="background-option ${activeBackground===option.id?'selected':''}" data-camera-background="${option.id}"><img src="${option.id==='none'?'':new URL(option.file,location.href).href}" alt="${option.name}" ${option.id==='none'?'hidden':''}><span>${option.name}</span></button>`).join('')}</div><label class="background-upload" for="customBackgroundInput">＋ &nbsp; Escolher imagem do dispositivo<input id="customBackgroundInput" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" hidden></label><small id="background-status">${activeBackground==='none'?'Fundo original da câmera ativo.':`Fundo ativo: ${cameraBackgrounds.find(item=>item.id===activeBackground)?.name||'imagem personalizada'}`}</small>`;document.body.append(panel);const width=Math.min(360,window.innerWidth-24),left=Math.max(12,Math.min(window.innerWidth-width-12,rect.right-width)),top=Math.max(12,Math.min(window.innerHeight-430,rect.bottom+8));panel.style.left=`${left}px`;panel.style.top=`${top}px`}
 function closeCameraOptions(){document.getElementById('cameraOptionsMenu')?.remove()}
 
-async function applyBackgroundImage(id,image,label,objectUrl=null){if(backgroundApplying){if(objectUrl)URL.revokeObjectURL(objectUrl);return}if(!media?.getVideoTracks().length){toast('Ative sua câmera antes de escolher um fundo.');if(objectUrl)URL.revokeObjectURL(objectUrl);return}backgroundApplying=true;try{await image.decode();if(backgroundPipeline){backgroundPipeline.image=image}else backgroundPipeline=await createBackgroundPipeline(image);await replaceOutgoingVideo(currentVideoTrack());const composed=new MediaStream([currentVideoTrack(),...media.getAudioTracks()]);showLocalVideo(composed);if(customBackgroundUrl&&customBackgroundUrl!==objectUrl)URL.revokeObjectURL(customBackgroundUrl);customBackgroundUrl=objectUrl;activeBackground=id;selectBackgroundOption(id);const status=document.querySelector('#v-'+uid+' #background-status');if(status)status.textContent=`Fundo ativo: ${label}`;toast(`Fundo aplicado: ${label}`)}catch(error){segmenterPromise=null;if(backgroundPipeline&&activeBackground==='none'){stopBackgroundPipeline(backgroundPipeline);backgroundPipeline=null}if(objectUrl)URL.revokeObjectURL(objectUrl);const message='Não foi possível preparar o fundo. Verifique a conexão e tente novamente.';const status=document.querySelector('#v-'+uid+' #background-status');if(status)status.textContent=message;toast(message);console.error(error)}finally{backgroundApplying=false}}
-async function setCameraBackground(id){if(id==='none'){if(backgroundPipeline){await replaceOutgoingVideo(media.getVideoTracks()[0]);stopBackgroundPipeline(backgroundPipeline);backgroundPipeline=null;showLocalVideo(media)}if(customBackgroundUrl){URL.revokeObjectURL(customBackgroundUrl);customBackgroundUrl=null}activeBackground='none';selectBackgroundOption('none');const status=document.querySelector('#v-'+uid+' #background-status');if(status)status.textContent='Fundo original da câmera ativo.';toast('Fundo original restaurado.');return}const option=cameraBackgrounds.find(item=>item.id===id);if(!option)return;const image=new Image();image.src=new URL(option.file,location.href).href;await applyBackgroundImage(id,image,option.name)}
+async function applyBackgroundImage(id,image,label,objectUrl=null){
+ if(backgroundApplying){if(objectUrl)URL.revokeObjectURL(objectUrl);return}
+ if(!media?.getVideoTracks().length){toast('Ative sua câmera antes de escolher um fundo.');if(objectUrl)URL.revokeObjectURL(objectUrl);return}
+ const source=media,previous=backgroundPipeline,controller=new AbortController();let candidate=null;
+ backgroundRequestController=controller;backgroundApplying=true;
+ const status=document.getElementById('background-status');if(status)status.textContent='Preparando fundo neste aparelho…';
+ try{
+  await image.decode();if(media!==source||controller.signal.aborted)throw new DOMException('Filtro cancelado','AbortError');
+  candidate=previous||await createBackgroundPipeline(image);
+  if(media!==source||controller.signal.aborted)throw new DOMException('Filtro cancelado','AbortError');
+  candidate.image=image;backgroundPipeline=candidate;
+  if(candidate!==previous)await replaceOutgoingVideo(currentVideoTrack());
+  if(media!==source||controller.signal.aborted)throw new DOMException('Filtro cancelado','AbortError');
+  showLocalVideo(candidate.stream);
+  if(customBackgroundUrl&&customBackgroundUrl!==objectUrl)URL.revokeObjectURL(customBackgroundUrl);
+  customBackgroundUrl=objectUrl;activeBackground=id;selectBackgroundOption(id);
+  if(status)status.textContent=`Fundo ativo: ${label}`;toast(`Fundo aplicado: ${label}`);
+ }catch(error){
+  if(candidate&&candidate!==previous){
+   if(backgroundPipeline===candidate){backgroundPipeline=previous;if(media===source)try{await replaceOutgoingVideo(currentVideoTrack());showLocalVideo(previous?.stream||source)}catch{}}
+   candidate.stop();
+  }
+  if(objectUrl)URL.revokeObjectURL(objectUrl);
+  if(error.name!=='AbortError'){const message='Não foi possível preparar o fundo. Sua câmera continua ativa.';if(status)status.textContent=message;toast(message);console.warn('Falha ao aplicar fundo',error)}
+ }finally{if(backgroundRequestController===controller){backgroundRequestController=null;backgroundApplying=false}}
+}
+async function setCameraBackground(id){
+ if(id==='none'){
+  backgroundRequestController?.abort();backgroundRequestController=null;backgroundApplying=false;
+  if(backgroundPipeline){
+   const previous=backgroundPipeline;
+   try{if(media)await replaceOutgoingVideo(media.getVideoTracks()[0])}catch(error){toast('Não foi possível trocar o vídeo agora. Tente novamente.');return}
+   backgroundPipeline=null;previous.stop();if(media)showLocalVideo(media);
+  }
+  if(customBackgroundUrl){URL.revokeObjectURL(customBackgroundUrl);customBackgroundUrl=null}
+  activeBackground='none';selectBackgroundOption('none');const status=document.getElementById('background-status');if(status)status.textContent='Fundo original da câmera ativo.';toast('Fundo original restaurado.');return;
+ }
+ const option=cameraBackgrounds.find(item=>item.id===id);if(!option)return;
+ const image=new Image();image.src=new URL(option.file,location.href).href;await applyBackgroundImage(id,image,option.name);
+}
 async function setCustomCameraBackground(file){if(!file)return;if(file.size>20*1024*1024){toast('A imagem deve ter até 20 MB.');return}const url=URL.createObjectURL(file),image=new Image();image.src=url;await applyBackgroundImage('custom',image,file.name,url)}
 
 $('#roomLabel').textContent='SALA '+room;$('#diceButtons').innerHTML=dice.map(d=>`<button data-d="${d}" class="${d===20?'active':''}">d${d}</button>`).join('');
