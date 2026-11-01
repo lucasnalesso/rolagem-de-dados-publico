@@ -9,3 +9,5 @@
 @media(max-width:700px){.npc-sidebar{display:block}.npc-sidebar .characters-list{margin-bottom:10px}.character-portrait-panel{align-items:flex-start;gap:10px}.character-portrait-preview{max-width:100px}.character-portrait-preview img{max-width:98px;max-height:130px}.character-portrait-actions button{width:100%}}
 
 .character-editor-actions button[id$="deleteNpcBtn"]{border-color:#9f5145;background:#391d18;color:#f6c1b4}.character-editor-actions button[hidden]{display:none}
+
+.character-add-space{min-height:42px;padding:10px 16px;border:1px solid var(--gold);border-radius:5px;background:#241c13;color:#ecd2a0;font-family:inherit;cursor:pointer}.character-add-space:disabled{opacity:.5;cursor:not-allowed}

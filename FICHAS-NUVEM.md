@@ -43,3 +43,12 @@ As imagens dos personagens são convertidas para JPEG de até 800 pixels e salva
 **Excluir NPC** remove a ficha selecionada e sua imagem mediante confirmação e validação da chave de edição. Um registro mínimo de exclusão, sem os campos da ficha nem imagem, impede que cópias desatualizadas recriem o NPC automaticamente. Outras fichas permanecem independentes.
 
 Em **Opções da mesa → Planos de fundos → Enviar plano**, é possível escolher JPG, PNG ou WebP do dispositivo. A imagem é otimizada e guardada como preferência deste navegador. **Meu plano enviado** reaplica a imagem, e os fundos originais continuam disponíveis.
+
+
+## Biblioteca e campos adicionais
+
+**Adicionar mais**, ao lado das capas, cria um espaço de livro por vez até 99. A navegação numérica identifica os livros de 1 a 99; as setas avançam ou recuam os grupos de números, mantendo até três capas na tela. Os espaços novos são compartilhados com os participantes da sala. As capas são carregadas apenas para os livros visíveis.
+
+No leitor de PDF, **←** e **→** navegam pelas páginas. Os atalhos não interferem quando o foco está nos campos de página ou busca.
+
+Nas fichas de jogadores e NPCs, **Adicionar mais armas** adiciona uma linha à tabela de armas. Em **Magias II**, **Adicionar mais magias** acrescenta uma ficha de magia. Quantidade e preenchimento são salvos junto ao personagem; os espaços anteriores são mantidos.

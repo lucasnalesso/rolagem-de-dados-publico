@@ -30,6 +30,7 @@ MAX_MUSIC_BYTES = 50 * 1024 * 1024
 MAX_MUSIC_TRACKS = 40
 MAX_MUSIC_TOTAL_BYTES = 500 * 1024 * 1024
 MAX_TEMP_IMAGE_BYTES = 20 * 1024 * 1024
+MAX_BOOK_SLOTS = 99
 MAX_BOOK_BYTES = 100 * 1024 * 1024
 SHEET_TYPES = {
     ".pdf": ("application/pdf", b"%PDF-"),
@@ -79,6 +80,15 @@ def read_book_index(room):
         return records if isinstance(records, list) else []
     except (OSError, json.JSONDecodeError):
         return []
+
+
+def read_book_capacity(room):
+    highest = max((int(item.get("slot", 0)) + 1 for item in read_book_index(room)), default=3)
+    try:
+        saved = int(json.loads((BOOK_DATA / room / "slots.json").read_text(encoding="utf-8")))
+    except (OSError, ValueError, TypeError):
+        saved = 3
+    return min(MAX_BOOK_SLOTS, max(3, highest, saved))
 
 
 def public_book(record):
@@ -226,7 +236,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not valid_room(room):
                 return self.send_json({"error": "sala inválida"}, 400)
             books = sorted(read_book_index(room), key=lambda item: item.get("slot", 0))
-            return self.send_json({"books": [public_book(item) for item in books]})
+            return self.send_json({"books": [public_book(item) for item in books], "capacity": read_book_capacity(room)})
 
         if parsed.path == "/api/books/file":
             room = query.get("room", [""])[0]
@@ -378,6 +388,8 @@ class Handler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path in ("/api/characters", "/api/npcs"):
             return self.save_character(npc=parsed.path == "/api/npcs")
+        if parsed.path == "/api/books/add-slot":
+            return self.add_book_slot(parse_qs(parsed.query))
         if parsed.path == "/api/books":
             return self.upload_book(parse_qs(parsed.query))
         if parsed.path == "/api/sheets":
@@ -517,7 +529,7 @@ class Handler(SimpleHTTPRequestHandler):
                     or not isinstance(token, str) or not re.fullmatch(r"[a-f0-9]{64}", token)
                     or type(version) is not int or version < 0
                     or not isinstance(owner_id, str) or not PLAYER_ID_RE.fullmatch(owner_id)
-                    or not isinstance(fields, dict) or len(fields) > 1000
+                    or not isinstance(fields, dict) or len(fields) > 4000
                     or any(not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", key)
                            or not isinstance(value, str) or len(value) > (300000 if key == "portrait.image" else 12000) for key, value in fields.items())):
                 raise ValueError()
@@ -539,6 +551,24 @@ class Handler(SimpleHTTPRequestHandler):
         except CharacterError as error:
             return self.send_json({"error": str(error)}, error.status)
 
+    def add_book_slot(self, query):
+        room, player_id = query.get("room", [""])[0], query.get("player", [""])[0]
+        if not valid_room(room) or not PLAYER_ID_RE.fullmatch(player_id):
+            return self.send_json({"error": "Sala ou jogador inválido."}, 400)
+        with lock:
+            capacity = read_book_capacity(room)
+            if capacity >= MAX_BOOK_SLOTS:
+                return self.send_json({"error": "A sala já possui 99 espaços de livros."}, 409)
+            folder = BOOK_DATA / room
+            try:
+                folder.mkdir(parents=True, exist_ok=True)
+                temporary = folder / "slots.tmp"
+                temporary.write_text(json.dumps(capacity + 1), encoding="utf-8")
+                temporary.replace(folder / "slots.json")
+            except OSError:
+                return self.send_json({"error": "Não foi possível criar outro espaço de livro."}, 500)
+        return self.send_json({"capacity": capacity + 1})
+
     def upload_book(self, query):
         room = query.get("room", [""])[0]
         player_id = query.get("player", [""])[0]
@@ -548,7 +578,7 @@ class Handler(SimpleHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             return self.send_json({"error": "dados do livro inválidos"}, 400)
-        if not valid_room(room) or not re.fullmatch(r"[a-fA-F0-9-]{8,64}", player_id) or slot not in range(3):
+        if not valid_room(room) or not re.fullmatch(r"[a-fA-F0-9-]{8,64}", player_id) or slot not in range(MAX_BOOK_SLOTS):
             return self.send_json({"error": "sala, jogador ou botão inválido"}, 400)
         if length <= 0 or length > MAX_BOOK_BYTES:
             return self.send_json({"error": "O PDF deve ter até 100 MB."}, 413)

@@ -50,11 +50,19 @@ function mountCharacterEditor(npc) {
   ['wisdom','Sabedoria',[['defense','Defesa à magia'],['bonus','Magias extras'],['failure','Chance de falha'],['immunity','Imunidade a magias']]],
   ['charisma','Carisma',[['allies','Máximo de aliados'],['loyalty','Fator de lealdade'],['reaction','Ajuste de reação']]]
  ];
+ function expandableCount(kind){
+  const data=draft(selected).fields,weapon=kind==='weapons',minimum=weapon?6:11;
+  const inferred=Math.max(minimum,...Object.keys(data).map(key=>{const match=key.match(weapon?/^weapons\.(\d+)\./:/^spells\.(\d+)\./);return match?Number(match[1])+(weapon?1:-9):minimum}));
+  return Math.min(99,Math.max(minimum,Number(data[weapon?'layout.weaponRows':'layout.magicIIRows'])||minimum,inferred));
+ }
+ function addSpaceButton(kind){
+  return `<button type="button" class="character-add-space" data-add-sheet-section="${kind}" ${expandableCount(kind)>=99?'disabled':''}>＋ Adicionar mais ${kind==='weapons'?'armas':'magias'}</button>`;
+ }
  function combatPage() {
   let body = section('Identificação', fields('identity.', [['name','Nome do personagem'],['class','Classe'],['race','Raça'],['alignment','Tendência'],['level','Nível'],['ageSex','Idade e sexo'],['weightHeight','Peso e altura'],['hairEyes','Cabelos e olhos'],['player','Jogador']]) + field('identity.appearance','Aparência geral / descrição do personagem',true));
   body += section('Atributos', abilities.map(([key,label,extras])=>`<div class="ability-row"><div class="ability-score">${field(key+'.score',label)}</div>${fields(key+'.',extras)}</div>`).join(''));
   body += '<div class="character-two-columns">' + section('Categoria de armadura',fields('armor.',[['dexterity','Destreza'],['armor','Armadura'],['shield','Escudo'],['magic','Magia'],['other','Outros ajustes'],['final','CA final']])) + section('Pontos de vida',fields('hp.',[['maximum','P.V. máximos'],['current','P.V. atuais']])+field('hp.wounds','Ferimentos',true)) + '</div>';
-  body += section('Armas corpo a corpo / distância',table('weapons',[['name','Arma'],['attacks','Nº de ataques'],['range','Alcance (P/M/L)'],['damageSmall','Dano (P/M)'],['damageLarge','Dano (G)'],['damageBonus','Ajuste de dano'],['weightSize','Peso / tamanho'],['type','Tipo de dano'],['speed','Velocidade']],6,'Armas'));
+  body += section('Armas corpo a corpo / distância',table('weapons',[['name','Arma'],['attacks','Nº de ataques'],['range','Alcance (P/M/L)'],['damageSmall','Dano (P/M)'],['damageLarge','Dano (G)'],['damageBonus','Ajuste de dano'],['weightSize','Peso / tamanho'],['type','Tipo de dano'],['speed','Velocidade']],expandableCount('weapons'),'Armas')+addSpaceButton('weapons'));
   body += section('Tabela de combate',fields('combat.',[['thac0','TACO'],['hit','Chance de acertar'],['ranged','Ataque à distância']]) + '<div class="combat-values">'+Array.from({length:21},(_,i)=>field('combat.ca'+(10-i),'CA '+(10-i))).join('')+'</div>');
   body += '<div class="character-two-columns">'+section('Resistências',fields('saves.',[['death','Paralisação, veneno ou morte'],['wands','Bastão, cajado ou varinha'],['petrification','Petrificação ou transformação'],['breath','Sopro de dragão'],['spells','Magias ou outros poderes mágicos']])) + section('Experiência',fields('xp.',[['current','Pontos atuais'],['next','Necessários para o próximo nível']]))+'</div>';
   return body;
@@ -70,9 +78,10 @@ function mountCharacterEditor(npc) {
    +section('Habilidades específicas',field('abilities','Habilidades raciais, de classe e outras',true));
  }
  function magicPage(second) {
-  const first = second ? 10 : 0, count = second ? 11 : 10;
+  const first = second ? 10 : 0, count = second ? expandableCount('magic') : 10;
   let body = second ? '' : section('Magias por dia',fields('daily.',Array.from({length:9},(_,i)=>[String(i+1),(i+1)+'º círculo'])));
   for (let i=first;i<first+count;i++) body += section('Magia '+(i+1),fields(`spells.${i}.`,[['name','Nome'],['level','Nível / círculo'],['range','Alcance'],['components','Componentes'],['duration','Duração'],['casting','Tempo de execução'],['area','Área de efeito'],['resistance','Resistência']])+field(`spells.${i}.description`,'Descrição',true));
+  if(second)body+=addSpaceButton('magic');
   return body;
  }
  function renderPlayersList() {
@@ -208,7 +217,7 @@ function mountCharacterEditor(npc) {
   try{
    if(file.size>512*1024)throw new Error('A cópia deve ter no máximo 512 KB.');
    const data=JSON.parse(await file.text());
-   if(data.format!=='mesa-adnd-v1'||!data.fields||typeof data.fields!=='object'||Array.isArray(data.fields)||Object.keys(data.fields).length>1000)throw new Error('Esta não é uma cópia de ficha da Mesa Sombria.');
+   if(data.format!=='mesa-adnd-v1'||!data.fields||typeof data.fields!=='object'||Array.isArray(data.fields)||Object.keys(data.fields).length>4000)throw new Error('Esta não é uma cópia de ficha da Mesa Sombria.');
    for(const [key,value] of Object.entries(data.fields))if(!/^[A-Za-z0-9_.-]{1,100}$/.test(key)||['__proto__','constructor','prototype'].includes(key)||typeof value!=='string'||value.length>(key==='portrait.image'?300000:12000))throw new Error('A cópia contém dados inválidos.');
    if(!confirm('Substituir o preenchimento desta ficha pelos dados da cópia?'))return;
    const local=draft(selected);local.fields={...data.fields};
@@ -245,6 +254,15 @@ function mountCharacterEditor(npc) {
  el('viewCharactersBtn').addEventListener('click',openEditor);
  el('editorCloseBtn').addEventListener('click',()=>{if(draft(selected).dirty)save();screen.hidden=true;el('viewCharactersBtn').focus()});
  el('characterEditorForm').addEventListener('submit',event=>{event.preventDefault();save()});
+ el('characterFields').addEventListener('click',event=>{
+  const button=event.target.closest('[data-add-sheet-section]');if(!button||!editable())return;
+  const kind=button.dataset.addSheetSection,current=expandableCount(kind);if(current>=99)return;
+  const local=draft(selected);local.fields[kind==='weapons'?'layout.weaponRows':'layout.magicIIRows']=String(current+1);local.dirty=true;local.blocked=false;
+  persist(selected);renderPage();scheduleSave(selected);
+  const key=kind==='weapons'?`weapons.${current}.name`:`spells.${10+current}.name`;
+  const input=el('characterFields').querySelector(`[data-field="${key}"]`);input?.scrollIntoView({block:'center'});input?.focus({preventScroll:true});
+  status('Novo espaço criado. Salvando na sala…');
+ });
  el('characterFields').addEventListener('input',event=>{
   const key=event.target.dataset.field;if(!key||!editable())return;
   const local=draft(selected);local.fields[key]=event.target.value;local.dirty=true;local.blocked=false;
