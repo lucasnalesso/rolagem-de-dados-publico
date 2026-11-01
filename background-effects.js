@@ -8,7 +8,7 @@
  function check(signal){if(signal?.aborted)throw abortError()}
  function fit(ctx,image,width,height){const scale=Math.max(width/image.width,height/image.height),w=image.width*scale,h=image.height*scale;ctx.drawImage(image,(width-w)/2,(height-h)/2,w,h)}
  async function workerEngine(signal,lowPower){
-  const worker=new Worker(new URL('background-worker.js?v=2',document.baseURI));
+  const worker=new Worker(new URL('background-worker.js?v=3',document.baseURI));
   const pending=new Map();let sequence=0,closed=false;
   const close=()=>{if(closed)return;closed=true;worker.terminate();for(const request of pending.values()){clearTimeout(request.timer);request.reject(abortError())}pending.clear();signal.removeEventListener('abort',close)};
   signal.addEventListener('abort',close,{once:true});
@@ -20,7 +20,7 @@
     try{worker.postMessage({id,type,...values},transfer)}catch(error){clearTimeout(timer);pending.delete(id);reject(error)}
    });
   }
-  worker.onmessage=event=>{const item=pending.get(event.data.id);if(!item)return;clearTimeout(item.timer);pending.delete(event.data.id);if(event.data.error)item.reject(new Error(event.data.error));else item.resolve(event.data)};
+  worker.onmessage=event=>{const item=pending.get(event.data.id);if(!item){event.data.frame?.close();return;}clearTimeout(item.timer);pending.delete(event.data.id);if(event.data.error)item.reject(new Error(event.data.error));else item.resolve(event.data)};
   worker.onerror=event=>{event.preventDefault();for(const item of pending.values()){clearTimeout(item.timer);item.reject(new Error('Não foi possível iniciar o filtro isolado'))}pending.clear();close()};
   try{
    const init=await request('init');check(signal);
@@ -41,14 +41,16 @@
   })().catch(error=>{assetsPromise=null;throw error});
   const {vision,files}=await assetsPromise;check(signal);
   // Cache only library assets, never a model that a previous pipeline may have closed.
-  const segmenter=await vision.ImageSegmenter.createFromOptions(files,{baseOptions:{modelAssetPath:MODEL,delegate:'CPU'},runningMode:'VIDEO',outputCategoryMask:true,outputConfidenceMasks:false});
+  const segmenter=await vision.ImageSegmenter.createFromOptions(files,{baseOptions:{modelAssetPath:MODEL,delegate:'CPU'},runningMode:'VIDEO',outputCategoryMask:false,outputConfidenceMasks:true});
   let closed=false;const close=()=>{if(!closed){closed=true;segmenter.close();signal.removeEventListener('abort',close)}};
   if(signal.aborted){close();throw abortError()}signal.addEventListener('abort',close,{once:true});
   const labels=segmenter.getLabels(),found=labels.findIndex(label=>/person|selfie|foreground|human/i.test(label));
-  return {mode:'compatible',labels,personCategory:found>=0?found:0,close,
+  const personCategory=found>=0?found:0;const snapshot=document.createElement('canvas'),snapshotCtx=snapshot.getContext('2d');
+  return {mode:'compatible',labels,personCategory,close,
    async infer(video,timestamp){
     check(signal);if(closed)throw abortError();let result;
-    try{const start=performance.now();result=segmenter.segmentForVideo(video,timestamp);const mask=result.categoryMask;if(!mask)throw new Error('Máscara não retornada');return {width:mask.width,height:mask.height,data:new Uint8Array(mask.getAsUint8Array()).buffer,elapsed:performance.now()-start}}
+    snapshot.width=video.videoWidth;snapshot.height=video.videoHeight;snapshotCtx.drawImage(video,0,0);
+    try{const start=performance.now();result=segmenter.segmentForVideo(snapshot,timestamp);const mask=result.confidenceMasks?.[personCategory];if(!mask)throw new Error('Máscara não retornada');return {width:mask.width,height:mask.height,data:new Float32Array(mask.getAsFloat32Array()).buffer,frame:snapshot,elapsed:performance.now()-start}}
     finally{if(result?.close)result.close();else{result?.categoryMask?.close();result?.confidenceMasks?.forEach(mask=>mask.close())}}
    }};
  }
@@ -56,27 +58,28 @@
   const sourceTrack=stream.getVideoTracks()[0];if(!sourceTrack||sourceTrack.readyState!=='live')throw abortError();
   const controller=new AbortController(),signal=controller.signal;
   const video=document.createElement('video');video.muted=true;video.playsInline=true;video.srcObject=new MediaStream([sourceTrack]);
-  const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{alpha:false}),maskCanvas=document.createElement('canvas'),maskCtx=maskCanvas.getContext('2d'),personCanvas=document.createElement('canvas'),personCtx=personCanvas.getContext('2d');
+  const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{alpha:false}),maskCanvas=document.createElement('canvas'),maskCtx=maskCanvas.getContext('2d'),personCanvas=document.createElement('canvas'),personCtx=personCanvas.getContext('2d'),cameraFrame=document.createElement('canvas'),cameraCtx=cameraFrame.getContext('2d');
   let engine=null,output=null,frame=0,busy=false,ready=false,hasMask=false,maskImage=null,errors=0,lastRequest=-Infinity,lastVideoTime=-1,lastDraw=-Infinity;
-  let interval=lowPower?180:110;const fps=lowPower?12:18;
+  let interval=lowPower?100:55;const fps=lowPower?12:18;
   const pipeline={image,video,stream:null,active:true,stats:{frames:0,masks:0,mode:'loading',interval},
    stop(){if(!pipeline.active)return;pipeline.active=false;controller.abort();clearTimeout(frame);engine?.close();output?.getTracks().forEach(track=>track.stop());video.pause();video.srcObject=null;sourceTrack.removeEventListener('ended',stop);externalSignal?.removeEventListener('abort',stop)}
   };
   const stop=()=>pipeline.stop();sourceTrack.addEventListener('ended',stop,{once:true});externalSignal?.addEventListener('abort',stop,{once:true});
   function install(result){
-   if(!pipeline.active)return;
-   const {width,height}=result,values=new Uint8Array(result.data);
+   if(!pipeline.active){result.frame?.close?.();return;}
+   const {width,height}=result,values=new Float32Array(result.data);
+   try{cameraCtx.drawImage(result.frame,0,0,cameraFrame.width,cameraFrame.height)}finally{result.frame?.close?.()}
    if(maskCanvas.width!==width||maskCanvas.height!==height){maskCanvas.width=width;maskCanvas.height=height;maskImage=maskCtx.createImageData(width,height)}
    if(!maskImage)maskImage=maskCtx.createImageData(width,height);
-   for(let i=0;i<values.length;i++){const j=i*4;maskImage.data[j]=maskImage.data[j+1]=maskImage.data[j+2]=255;maskImage.data[j+3]=values[i]===engine.personCategory?255:0}
+   for(let i=0;i<values.length;i++){const j=i*4;maskImage.data[j]=maskImage.data[j+1]=maskImage.data[j+2]=255;const t=Math.max(0,Math.min(1,(values[i]-.45)/.4));maskImage.data[j+3]=Math.round(255*t*t*(3-2*t))}
    maskCtx.putImageData(maskImage,0,0);hasMask=true;pipeline.stats.masks++;
-   interval=Math.max(lowPower?180:110,Math.min(750,result.elapsed*3));pipeline.stats.interval=interval;
+   interval=Math.max(lowPower?100:55,Math.min(500,result.elapsed*1.5));pipeline.stats.interval=interval;
   }
   function compose(){
    const width=canvas.width,height=canvas.height;
    if(!sourceTrack.enabled){ctx.fillStyle='#090807';ctx.fillRect(0,0,width,height);return}
    ctx.globalCompositeOperation='source-over';fit(ctx,pipeline.image,width,height);
-   personCtx.globalCompositeOperation='source-over';personCtx.clearRect(0,0,width,height);personCtx.drawImage(video,0,0,width,height);
+   personCtx.globalCompositeOperation='source-over';personCtx.clearRect(0,0,width,height);personCtx.drawImage(cameraFrame,0,0,width,height);
    if(hasMask){personCtx.globalCompositeOperation='destination-in';personCtx.drawImage(maskCanvas,0,0,width,height);personCtx.globalCompositeOperation='source-over'}
    ctx.drawImage(personCanvas,0,0,width,height);pipeline.stats.frames++;
   }
@@ -87,7 +90,7 @@
    if(now-lastDraw>=1000/fps){lastDraw=now;try{compose()}catch(error){fail(error);return}}
    if(!sourceTrack.enabled||busy||now-lastRequest<interval||lastVideoTime===video.currentTime)return;
    busy=true;lastRequest=now;lastVideoTime=video.currentTime;
-   engine.infer(video,now).then(result=>{if(!pipeline.active)return;install(result);errors=0}).catch(error=>{if(pipeline.active&&++errors>=3)fail(error)}).finally(()=>{busy=false});
+   engine.infer(video,now).then(result=>{if(!pipeline.active){result.frame?.close?.();return;}install(result);compose();errors=0}).catch(error=>{if(pipeline.active&&++errors>=3)fail(error)}).finally(()=>{busy=false});
   }
   let playTimer;
   try{
@@ -97,7 +100,7 @@
    }else engine=await compatibleEngine(signal);
    check(signal);pipeline.stats.mode=engine.mode;pipeline.stats.personCategory=engine.personCategory;
    const width=Math.min(video.videoWidth,lowPower?360:480),height=Math.max(1,Math.round(width*video.videoHeight/video.videoWidth));
-   canvas.width=personCanvas.width=width;canvas.height=personCanvas.height=height;
+   canvas.width=personCanvas.width=cameraFrame.width=width;canvas.height=personCanvas.height=cameraFrame.height=height;
    install(await engine.infer(video,performance.now()));check(signal);compose();
    output=canvas.captureStream(fps);pipeline.stream=output;ready=true;frame=setTimeout(()=>draw(performance.now()),1000/fps);return pipeline;
   }catch(error){clearTimeout(playTimer);pipeline.stop();throw error}

@@ -137,3 +137,9 @@ Cada filtro possui seu próprio modelo e processamento em Worker clássico (a bi
 Máscaras e imagens intermediárias são liberadas a cada quadro. Desligar/reativar encerra a instância anterior; falhas retornam à câmera original. A troca de faixa modifica somente vídeo e restaura a faixa anterior se o emissor rejeitar a mudança. Áudio e negociação de conexão foram preservados.
 
 Validação: sintaxe dos três scripts, liberação de recursos em sucesso/falha, restauração de emissor e comparação das funções de áudio/conexão. Integração local com dois participantes sintéticos usando fundos diferentes simultaneamente: workers ativos, contadores de máscaras/quadros avançando, uma faixa de áudio enviada/recebida em cada lado, e reativação de um filtro sem interromper o outro. O modo compatível também funcionou. Desempenho e recorte com pessoas reais devem ser confirmados nos aparelhos utilizados.
+
+### Bordas e movimento do recorte (v31)
+
+Substitui a máscara binária por valores de confiança, com transição gradual de transparência (.45–.85). A imagem usada na composição é agora exatamente o quadro analisado, devolvido pelo worker junto da máscara. Isso evita aplicar o contorno atrasado sobre uma posição nova da pessoa e expor faixas claras do fundo original durante movimentos. O ritmo de atualização continua limitado/adaptável e sem filas; máscaras e bitmaps são liberados, inclusive se o filtro for interrompido antes da resposta. Áudio, conexão, app.js e demais recursos permanecem inalterados.
+
+Validação: testes da curva de transparência, pareamento imagem/máscara, descarte após cancelamento e liberação em sucesso/falha. Dois participantes sintéticos com modelos reais em workers e fundos diferentes mantiveram vídeo e áudio em sendrecv. A qualidade visual com cabelo, luz e movimentos de pessoas reais depende de validação nos aparelhos; não foi comparada visualmente ao Google Meet.
